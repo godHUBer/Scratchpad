@@ -215,7 +215,23 @@ Important, honest limitations:
 - The owner invariant (`workspaces.owner_id` ↔ owner membership row) is protected by a trigger plus atomic RPCs; the last owner can never be removed or demoted.
 - Realtime: `postgres_changes` respects RLS; presence uses a **private** channel whose `realtime.messages` policy only allows members of that workspace, and `REPLICA IDENTITY FULL` makes DELETE events filterable by `workspace_id`.
 
-A 40-assertion SQL verification matrix (owner/editor/viewer/outsider, invitation lifecycle, replay, last-owner, direct-write blocking) was executed against the live database when these migrations were applied.
+Two verification passes were executed against the live project (`lkxygnbvkdlwacbcbott`):
+
+1. A **40-assertion** SQL matrix (owner/editor/viewer/outsider, invitation lifecycle, replay, last-owner, direct-write blocking) when the migrations were applied.
+2. A **live two-user probe** run as real `authenticated` sessions (`auth.users` rows created, exercised, and removed in the same call):
+
+   | Step | Observed |
+   | --- | --- |
+   | `create_team` as owner | workspace created |
+   | `create_invitation` (email-bound, `viewer`) | invitation row created, token returned once |
+   | Unrelated signed-in user accepts | rejected `42501` |
+   | Addressed invitee accepts | succeeds, returns the workspace id |
+   | Invitee accepts again (replay) | rejected `22023` |
+   | Viewer calls `create_canvas_item` | rejected `42501` |
+   | Owner calls `create_canvas_item` | succeeds |
+   | Final state | 2 members, invitation `accepted` with `accepted_by`/`accepted_at` |
+
+   Probe rows were deleted afterwards (verified: 0 users, 0 workspaces, 0 invitations left).
 
 ---
 
