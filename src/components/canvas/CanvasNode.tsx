@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Group, Image as KonvaImage, Line, Rect, Text } from 'react-konva';
-import type Konva from 'konva';
 import type { Bookmark, CanvasItem, MediaAsset } from '../../types';
 import { driveDirectUrl } from '../../lib/drive';
 import { BookmarkCardBody } from './BookmarkCardBody';
@@ -15,8 +14,8 @@ interface CanvasNodeProps {
   selected: boolean;
   canInteract: boolean;
   onSelect: (id: string, additive: boolean) => void;
-  onDragStart: (id: string) => void;
-  onDragEnd: (id: string, x: number, y: number) => void;
+  onDragStart?: (id: string) => void;
+  onDragEnd?: (id: string, x: number, y: number) => void;
   onDoubleClick: (item: CanvasItem) => void;
 }
 
@@ -29,11 +28,8 @@ export function CanvasNode({
   selected,
   canInteract,
   onSelect,
-  onDragStart,
-  onDragEnd,
   onDoubleClick,
 }: CanvasNodeProps) {
-  const groupRef = useRef<Konva.Group>(null);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [imageFailed, setImageFailed] = useState(false);
 
@@ -154,61 +150,35 @@ export function CanvasNode({
   const isImageCard = item.item_type === 'image' && image && !imageFailed;
 
   return (
-    <>
-      <Group
-        ref={groupRef}
-        x={item.position_x}
-        y={item.position_y}
-        draggable={canInteract}
-        name={`item-${item.id}`}
-        onDragStart={() => onDragStart(item.id)}
-        onDragEnd={(event) => onDragEnd(item.id, event.target.x(), event.target.y())}
-        onClick={(event) => {
-          event.cancelBubble = true;
-          onSelect(item.id, event.evt.shiftKey);
-        }}
-        onTap={(event) => {
-          event.cancelBubble = true;
-          onSelect(item.id, false);
-        }}
-        onDblClick={() => onDoubleClick(item)}
-        onDblTap={() => onDoubleClick(item)}
-      >
-        <Rect
-          width={item.width}
-          height={item.height}
-          cornerRadius={CARD_RADIUS}
-          fill={isImageCard ? '#fffdf6' : fill}
-          stroke="#080808"
-          strokeWidth={2.5}
-          shadowColor="#080808"
-          shadowOpacity={0.25}
-          shadowBlur={0}
-          shadowOffsetY={3}
-          shadowOffsetX={3}
-        />
-        {isImageCard && image ? (
-          <KonvaImage
-            image={image}
-            width={item.width}
-            height={item.height}
-            cornerRadius={CARD_RADIUS}
-            listening={false}
-          />
-        ) : null}
-        {selected ? (
-          <Rect
-            width={item.width}
-            height={item.height}
-            cornerRadius={CARD_RADIUS}
-            stroke="#080808"
-            strokeWidth={3}
-            dash={[10, 6]}
-            listening={false}
-          />
-        ) : null}
-      </Group>
-    </>
+    // Cards are painted here (so images and bookmarks survive zoom) but all
+    // interaction happens in the DOM shell, which can host real media players.
+    <Group x={item.position_x} y={item.position_y} listening={false}>
+      <Rect
+        width={item.width}
+        height={item.height}
+        cornerRadius={CARD_RADIUS}
+        fill={isImageCard ? '#fffdf6' : fill}
+        stroke="#080808"
+        strokeWidth={2.5}
+        shadowColor="#080808"
+        shadowOpacity={0.25}
+        shadowBlur={0}
+        shadowOffsetY={3}
+        shadowOffsetX={3}
+      />
+      {isImageCard && image ? (
+        <KonvaImage image={image} width={item.width} height={item.height} cornerRadius={CARD_RADIUS} listening={false} />
+      ) : null}
+      <Rect
+        width={item.width}
+        height={item.height}
+        cornerRadius={CARD_RADIUS}
+        stroke={selected ? '#080808' : 'transparent'}
+        strokeWidth={3}
+        dash={selected ? [10, 6] : undefined}
+        listening={false}
+      />
+    </Group>
   );
 }
 

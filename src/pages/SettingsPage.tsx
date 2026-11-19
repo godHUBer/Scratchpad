@@ -8,7 +8,7 @@ import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { roleLabel } from '../lib/permissions';
 import { fullDate } from '../lib/format';
 import { humanizeError } from '../lib/errors';
-import { supabasePublishableKey, supabaseUrl } from '../integrations/supabase/client';
+import { readAppConfig } from '../lib/config';
 
 export function SettingsPage() {
   const { user, profile, updateProfile, signOut } = useAuth();
@@ -19,6 +19,7 @@ export function SettingsPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [signOutOpen, setSignOutOpen] = useState(false);
+  const config = readAppConfig();
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -125,11 +126,11 @@ export function SettingsPage() {
         <dl className="mt-2 space-y-1 text-xs">
           <div className="flex justify-between gap-3">
             <dt className="font-bold text-ink-soft">Supabase project</dt>
-            <dd className="truncate font-mono">{supabaseUrl || 'not configured'}</dd>
+            <dd className="truncate font-mono">{config.supabaseUrl || 'not configured'}</dd>
           </div>
           <div className="flex justify-between gap-3">
             <dt className="font-bold text-ink-soft">Client key</dt>
-            <dd className="truncate font-mono">{supabasePublishableKey ? `${supabasePublishableKey.slice(0, 18)}…` : '—'}</dd>
+            <dd className="truncate font-mono">{config.publishableKeyPreview || '—'}</dd>
           </div>
         </dl>
         <p className="mt-2 text-xs text-ink-soft">

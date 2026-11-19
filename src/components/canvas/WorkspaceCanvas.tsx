@@ -408,6 +408,11 @@ export function WorkspaceCanvas({
   const cardItems = sorted.filter((item) =>
     ['image', 'audio', 'video', 'media_link', 'bookmark'].includes(item.item_type),
   );
+  const cardInteraction = tool === 'select';   // other tools click through the DOM cards
+  const cardDragEnabled = canWrite && tool === 'select';
+  // eraser works on every layer (drawings, text, cards); Konva nodes stay
+  // interactive so the stage sees the click even on top of a shape
+  const nodeInteraction = tool === 'select' || tool === 'eraser';
 
   return (
     <div
@@ -478,7 +483,7 @@ export function WorkspaceCanvas({
                 bookmark={null}
                 media={null}
                 selected={selectedIds.includes(item.id)}
-                canInteract={tool === 'select'}
+                canInteract={nodeInteraction}
                 onSelect={handleSelect}
                 onDragStart={handleNodeDragStart}
                 onDragEnd={(id, x, y) => void handleNodeDragEnd(id, x, y)}
@@ -574,7 +579,7 @@ export function WorkspaceCanvas({
               key={`overlay-${item.id}`}
               item={item}
               viewport={viewport}
-              canWrite={canWrite && tool === 'select'}
+              canWrite={cardDragEnabled}
               isDragging={draggingCard === item.id}
               onDragStart={() => {
                 setSelectedIds(isSelected ? selectedIds : [item.id]);
@@ -595,7 +600,7 @@ export function WorkspaceCanvas({
                   borderRadius: 14,
                   boxShadow: '3px 3px 0 0 #080808',
                   background: item.item_type === 'bookmark' ? bookmarks[item.bookmark_id ?? '']?.color ?? '#f7c948' : '#fffdf6',
-                  pointerEvents: tool === 'select' ? 'auto' : 'none',
+                  pointerEvents: cardInteraction ? 'auto' : 'none',
                 }}
                 onDoubleClick={(event) => {
                   event.stopPropagation();
@@ -606,7 +611,7 @@ export function WorkspaceCanvas({
                   item={item}
                   bookmark={item.bookmark_id ? bookmarks[item.bookmark_id] ?? null : null}
                   media={item.media_asset_id ? media[item.media_asset_id] ?? null : null}
-                  canInteract={tool === 'select'}
+                  canInteract={cardInteraction}
                   selected={isSelected}
                   onOpenEdit={(target) => onOpenCardEditor?.(target)}
                 />
