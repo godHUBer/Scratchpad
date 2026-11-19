@@ -5,6 +5,7 @@ import { useToast } from '../contexts/ToastContext';
 import { humanizeError } from '../lib/errors';
 import { supabaseConfigured } from '../integrations/supabase/client';
 import { Spinner } from '../components/ui/Spinner';
+import { Icon } from '../components/ui/Icon';
 
 type Mode = 'signin' | 'signup';
 
@@ -96,9 +97,9 @@ export function SignInPage() {
             bookmarks and Google Drive media — then invite your team.
           </p>
           <ul className="grid gap-2 text-sm font-bold">
-            <li className="chip justify-start bg-mustard">🖍️ Infinite canvas</li>
-            <li className="chip justify-start bg-mint">👥 Team roles &amp; invites</li>
-            <li className="chip justify-start bg-sky">🔗 Drive links, no uploads</li>
+            <li className="chip justify-start gap-1.5 bg-mustard"><Icon name="brush" size={14} /> Infinite canvas</li>
+            <li className="chip justify-start gap-1.5 bg-mint"><Icon name="users" size={14} /> Team roles &amp; invites</li>
+            <li className="chip justify-start gap-1.5 bg-sky"><Icon name="link" size={14} /> Drive links, no uploads</li>
           </ul>
         </section>
 

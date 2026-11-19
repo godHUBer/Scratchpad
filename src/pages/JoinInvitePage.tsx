@@ -7,6 +7,7 @@ import { fullDate, relativeTime } from '../lib/format';
 import { humanizeError } from '../lib/errors';
 import { Spinner } from '../components/ui/Spinner';
 import type { InvitationPreview } from '../types';
+import { Icon } from '../components/ui/Icon';
 
 /**
  * Public invitation landing page. Works before sign-in: the visitor sees which
@@ -85,7 +86,7 @@ export function JoinInvitePage() {
     <div className="flex min-h-screen items-center justify-center p-4 sm:p-8">
       <div className="w-full max-w-xl">
         <Link to="/" className="mb-4 inline-flex items-center gap-2 rounded-xl px-2 py-1 font-black hover:bg-paper">
-          <span aria-hidden>📒</span> Scratchpad
+          <Icon name="bookmarkShelf" size={20} /> Scratchpad
         </Link>
 
         <div className="paper relative p-6">

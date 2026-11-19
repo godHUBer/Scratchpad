@@ -166,7 +166,7 @@ export function SyncPill({
       </button>
       {conflicts > 0 ? (
         <span className="chip min-h-8 bg-lilac" title="Remote edits were merged into your canvas">
-          ↗ {conflicts}
+          {conflicts}
         </span>
       ) : null}
     </div>

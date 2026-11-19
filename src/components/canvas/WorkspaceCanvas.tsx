@@ -697,7 +697,7 @@ export function WorkspaceCanvas({
         // the canvas unclickable exactly when the user first tries to draw.
         <div className="pointer-events-none absolute inset-0 grid place-items-center p-6">
           <div className="paper pointer-events-none max-w-sm px-5 py-4 text-center">
-            <p className="text-lg font-black">Your canvas is blank ✏️</p>
+            <p className="text-lg font-black">Your canvas is blank</p>
             <p className="mt-1 text-sm text-ink-soft">
               Pick <strong>Text</strong>, <strong>Brush</strong>, or paste a Google Drive link with{' '}
               <strong>Media</strong>. Everything saves automatically.

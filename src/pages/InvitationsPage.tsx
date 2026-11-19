@@ -81,7 +81,7 @@ export function InvitationsPage() {
           <span className="chip bg-paper">{pendingReceived.length} pending</span>
         </h2>
         {receivedInvitations.length === 0 ? (
-          <EmptyState emoji="✉️" title="No invitations yet" compact>
+          <EmptyState icon="mail" title="No invitations yet" compact>
             When someone invites you, the invite appears here. Open the link from the message you received to join.
           </EmptyState>
         ) : (
@@ -129,8 +129,8 @@ export function InvitationsPage() {
       <section>
         <h2 className="mb-2 text-lg font-extrabold">Sent by you</h2>
         {sentInvitations.length === 0 ? (
-          <EmptyState emoji="📮" title="You haven't invited anyone yet" compact>
-            Open a team → Invite to create a link. You can bind it to an email or leave it shareable.
+          <EmptyState icon="mail" title="You haven't invited anyone yet" compact>
+            Open a team, then Invite, to create a link. You can bind it to an email or leave it shareable.
           </EmptyState>
         ) : (
           <ul className="space-y-2">

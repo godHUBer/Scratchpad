@@ -1,6 +1,7 @@
 import { useToast, type ToastKind } from '../../contexts/ToastContext';
+import { Icon, type IconName } from './Icon';
 
-const ICON: Record<ToastKind, string> = { success: '✓', error: '!', info: 'i' };
+const ICON: Record<ToastKind, IconName> = { success: 'check', error: 'close', info: 'copy' };
 const BG: Record<ToastKind, string> = {
   success: 'bg-mint',
   error: 'bg-coral',
@@ -24,7 +25,7 @@ export function Toaster() {
             className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 border-ink text-xs font-black ${BG[toast.kind]}`}
             aria-hidden
           >
-            {ICON[toast.kind]}
+            <Icon name={ICON[toast.kind]} size={14} strokeWidth={3} />
           </span>
           <p className="flex-1 text-sm font-semibold leading-snug">{toast.message}</p>
           <button
@@ -33,7 +34,7 @@ export function Toaster() {
             className="text-sm font-black opacity-60 hover:opacity-100"
             aria-label="Dismiss notification"
           >
-            ✕
+            <Icon name="close" size={14} strokeWidth={3} />
           </button>
         </div>
       ))}

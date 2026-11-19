@@ -245,7 +245,7 @@ function LinkPanel({
             className="chip bg-mustard hover:bg-paper"
             onPointerDown={(event) => event.stopPropagation()}
           >
-            Open original ↗
+            Open original
           </a>
         ) : null}
         {extra ? (

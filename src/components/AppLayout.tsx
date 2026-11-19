@@ -6,6 +6,7 @@ import { NavigationSidebar } from './NavigationSidebar';
 import { CreateTeamModal } from './teams/CreateTeamModal';
 import { JoinTeamModal } from './teams/JoinTeamModal';
 import { useToast } from '../contexts/ToastContext';
+import { Icon } from './ui/Icon';
 import { humanizeError } from '../lib/errors';
 
 /**
@@ -32,14 +33,13 @@ export function AppLayout({ children }: { children?: ReactNode }) {
       <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b-[3px] border-ink bg-cream/95 px-3 py-2 backdrop-blur-[2px] sm:px-4">
         <div className="flex min-w-0 items-center gap-2">
           <Link to="/workspace" className="flex items-center gap-2 rounded-xl px-1 py-0.5 hover:bg-paper">
-            <span className="text-xl" aria-hidden>
-              📒
-            </span>
+            <Icon name="bookmarkShelf" size={22} />
             <span className="hidden text-lg font-black tracking-tight sm:inline">Scratchpad</span>
           </Link>
           {currentWorkspace ? (
-            <span className="chip max-w-[46vw] truncate bg-paper" title={currentWorkspace.name}>
-              {currentWorkspace.type === 'personal' ? '🗂️' : '👥'} {currentWorkspace.name}
+            <span className="chip max-w-[46vw] gap-1 bg-paper" title={currentWorkspace.name}>
+              <Icon name={currentWorkspace.type === 'personal' ? 'home' : 'users'} size={14} />
+              <span className="truncate">{currentWorkspace.name}</span>
             </span>
           ) : null}
         </div>

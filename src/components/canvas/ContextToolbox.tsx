@@ -4,6 +4,7 @@ import type { Bookmark, CanvasItem, MediaAsset } from '../../types';
 import { roleLabel } from '../../lib/permissions';
 import type { Role } from '../../types';
 import { hostnameOf, pluralize } from '../../lib/format';
+import { Icon } from '../ui/Icon';
 
 interface ContextToolboxProps {
   tool: Tool;
@@ -65,7 +66,7 @@ export function ContextToolbox(props: ContextToolboxProps) {
         aria-label="Show toolbox"
         title="Show toolbox"
       >
-        🧰
+        <Icon name="settings" size={18} />
       </button>
     );
   }
@@ -225,7 +226,7 @@ function EmptyContext({
               <kbd className="chip">Esc</kbd> clear selection / cancel tool
             </li>
             <li>
-              <kbd className="chip">↑↓←→</kbd> nudge selected item
+              <kbd className="chip">arrows</kbd> nudge selected item
             </li>
             <li>
               <kbd className="chip">Ctrl/⌘ + Z</kbd> undo
@@ -301,7 +302,7 @@ function SingleItem({
             </button>
             {bookmark ? (
               <a href={bookmark.url} target="_blank" rel="noreferrer noopener" className="btn min-h-8 px-2 py-0.5 text-xs">
-                Open ↗
+                Open
               </a>
             ) : null}
           </div>
@@ -323,7 +324,7 @@ function SingleItem({
             </button>
             {asset ? (
               <a href={asset.original_url} target="_blank" rel="noreferrer noopener" className="btn min-h-8 px-2 py-0.5 text-xs">
-                Open original ↗
+                Open original
               </a>
             ) : null}
           </div>
@@ -364,7 +365,7 @@ function SingleItem({
               onClick={() => onLayer(item, direction)}
               title={direction}
             >
-              {direction === 'back' ? '⤓' : direction === 'backward' ? '↓' : direction === 'forward' ? '↑' : '⤒'}
+              <Icon name={direction === 'back' || direction === 'backward' ? 'zoomOut' : 'zoomIn'} size={14} />
             </button>
           ))}
         </div>
