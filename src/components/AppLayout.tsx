@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, Outlet, useNavigate } from 'react-router-dom';
 import { useWorkspaces } from '../contexts/WorkspaceContext';
 import { useAuth } from '../contexts/AuthContext';
 import { NavigationSidebar } from './NavigationSidebar';
@@ -8,7 +8,17 @@ import { JoinTeamModal } from './teams/JoinTeamModal';
 import { useToast } from '../contexts/ToastContext';
 import { humanizeError } from '../lib/errors';
 
-export function AppLayout({ children }: { children: ReactNode }) {
+/**
+ * Shell for every signed-in page: header, slide-over navigation and the routed
+ * page body.
+ *
+ * The page body comes from <Outlet />, NOT from a `children` prop. This element
+ * is used as a pathless layout route in App.tsx, so React Router renders the
+ * matched child route into the Outlet. Accepting `children` here (as an earlier
+ * version did, rendered with `{null}`) silently produced an empty <main> and
+ * made every page after sign-in — the canvas included — unreachable.
+ */
+export function AppLayout({ children }: { children?: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [joinOpen, setJoinOpen] = useState(false);
@@ -54,7 +64,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="flex-1">{children}</main>
+      <main className="flex-1">
+        <Outlet />
+        {children}
+      </main>
 
       <NavigationSidebar
         open={menuOpen}

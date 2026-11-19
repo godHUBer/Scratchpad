@@ -173,6 +173,33 @@ Because the app uses **HashRouter**, deep links like `…/Scratchpad/#/invite/<t
 
 ---
 
+### 4.3 Symptom: the site loads but the screen is blank
+
+**This is the branch-mode trap.** If `Settings → Pages` is set to **Deploy from a branch**
+(`main` / `/`), GitHub publishes your *source tree* through Jekyll. The live `index.html` then
+contains `<script type="module" src="/src/main.tsx">`, which never exists on Pages, so the browser
+loads nothing and you get a blank cream page.
+
+Check what mode you are in:
+
+```bash
+gh api repos/<owner>/<repo>/pages --jq '.build_type, .source.branch, .source.path'
+```
+
+- `"legacy"` + a branch → **wrong.** The Vite build in `dist/` is not used at all.
+- `"workflow"` → correct; the Actions run supplies the built artifact.
+
+Fix:
+
+1. Add the workflow (section 4.1) and push it to `main`.
+2. `Settings → Pages → Source: GitHub Actions`.
+3. Re-run the **Deploy to GitHub Pages** workflow (Actions tab → Run workflow), or push to `main`.
+
+If the page is blank *after* switching to Actions mode, open DevTools → Console/Network. The app now
+shows an explicit panel instead of a white screen for (a) an unbuilt page being served and (b) a
+render-time crash, and the workflow fails the build if `VITE_SUPABASE_URL` is not baked into the
+bundle.
+
 ## 5. How the Google Drive integration works (and its limits)
 
 **No Drive API, no Google OAuth, no Picker, no SDK, no Supabase Storage.** A media card stores only a URL, file id and metadata.

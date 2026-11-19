@@ -26,7 +26,7 @@ export default function App() {
               <Route
                 element={
                   <RequireAuth>
-                    <AppLayout>{null}</AppLayout>
+                    <AppLayout />
                   </RequireAuth>
                 }
               >

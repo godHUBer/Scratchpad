@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Modal } from '../ui/Modal';
 import { parseInviteLink } from '../../lib/inviteLink';
+import { invitationUrl } from '../../integrations/supabase/client';
 
 interface JoinTeamModalProps {
   open: boolean;
@@ -28,7 +29,7 @@ export function JoinTeamModal({ open, onClose, onError, onGoToInvitations, onOpe
     }
     setError(null);
     setValue('');
-    onOpenLink(`${window.location.origin}${import.meta.env.BASE_URL}#/invite/${token}`);
+    onOpenLink(invitationUrl(token));
   };
 
   return (

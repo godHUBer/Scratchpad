@@ -13,6 +13,42 @@
   </head>
   <body>
     <div id="root"></div>
+    <div id="boot-error" hidden style="font-family: 'Trebuchet MS', system-ui, sans-serif; max-width: 34rem; margin: 12vh auto; padding: 1.25rem 1.4rem; background: #fffdf6; color: #080808; border: 3px solid #080808; border-radius: 14px; box-shadow: 4px 4px 0 0 #080808; line-height: 1.45">
+      <p style="margin: 0 0 0.5rem; font-size: 1.15rem; font-weight: 800">The app bundle did not load</p>
+      <p style="margin: 0 0 0.75rem; font-size: 0.9rem">
+        This page was served as raw source instead of the compiled app. That happens when
+        <strong>Settings &rarr; Pages &rarr; Source</strong> is set to <em>Deploy from a branch</em>
+        with a branch that stores source code.
+      </p>
+      <p style="margin: 0 0 0.35rem; font-size: 0.9rem; font-weight: 700">Fix it in two steps:</p>
+      <ol style="margin: 0 0 0.75rem; padding-left: 1.2rem; font-size: 0.9rem">
+        <li>Add <code>.github/workflows/deploy.yml</code> (it ships in <code>deployment/workflows/</code>).</li>
+        <li>Set <strong>Pages &rarr; Source</strong> to <strong>GitHub Actions</strong>, then re-run the workflow.</li>
+      </ol>
+      <p style="margin: 0; font-size: 0.8rem; color: #5b5648">Details: README sections 4.1 and 4.2.</p>
+    </div>
+    <!--
+      Diagnostic tripwire. If this page is ever served WITHOUT being built by
+      Vite, /src/main.tsx does not exist and the module never runs, so the page
+      would stay blank with no explanation. Pages in "Deploy from a branch"
+      mode does exactly that. This inline (non-module) script explains it.
+    -->
+    <script>
+      window.addEventListener('error', function (event) {
+        var target = event.target;
+        if (target && target.tagName === 'SCRIPT') {
+          var panel = document.getElementById('boot-error');
+          if (panel) panel.removeAttribute('hidden');
+        }
+      }, true);
+      window.setTimeout(function () {
+        var root = document.getElementById('root');
+        if (root && root.childElementCount === 0) {
+          var panel = document.getElementById('boot-error');
+          if (panel) panel.removeAttribute('hidden');
+        }
+      }, 4000);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
