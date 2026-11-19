@@ -62,7 +62,7 @@ export function ContextToolbox(props: ContextToolboxProps) {
       <button
         type="button"
         onClick={onToggleCollapsed}
-        className="absolute left-2 top-20 z-20 grid h-10 w-10 place-items-center rounded-xl border-[3px] border-ink bg-paper hard-shadow-sm"
+        className="absolute left-2 top-[7.5rem] z-20 grid h-10 w-10 place-items-center rounded-xl border-[3px] border-ink bg-paper hard-shadow-sm sm:top-20"
         aria-label="Show toolbox"
         title="Show toolbox"
       >
@@ -73,7 +73,7 @@ export function ContextToolbox(props: ContextToolboxProps) {
 
   return (
     <aside
-      className="absolute left-2 top-20 z-20 w-[248px] max-w-[86vw] overflow-y-auto rounded-2xl border-[3px] border-ink bg-paper p-3 hard-shadow-sm"
+      className="absolute left-2 top-[7.5rem] z-20 max-h-[calc(100%-9rem)] w-[232px] max-w-[calc(100%-1rem)] overflow-y-auto rounded-2xl border-[3px] border-ink bg-paper p-3 hard-shadow-sm sm:top-20 sm:w-[248px]"
       style={{ maxHeight: 'calc(100% - 140px)' }}
       aria-label="Contextual toolbox"
     >

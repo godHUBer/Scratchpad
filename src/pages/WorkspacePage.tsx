@@ -388,7 +388,7 @@ export function WorkspacePage() {
           onRetrySync={() => void canvas.reload()}
         />
 
-        <div className="absolute right-2 top-2 z-20 flex flex-col items-end gap-1.5">
+        <div className="absolute right-2 top-[7.5rem] z-20 flex flex-col items-end gap-1.5 sm:top-2">
           <MemberAvatars members={members} online={online.map((o) => o.user_id)} onOpen={() => setMembersOpen(true)} />
           {online.length > 1 ? (
             <span className="chip bg-mint">{online.length} online</span>
