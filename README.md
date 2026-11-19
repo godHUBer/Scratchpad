@@ -8,7 +8,10 @@ An infinite whiteboard, shared notebook, bookmark shelf and creative workspace �
 - **Teams**: owners/editors/viewers, invitations (email-bound or shareable links), member management, ownership transfer — all enforced by Postgres RLS and RPCs.
 - **Collaboration**: Supabase Realtime for objects, presence avatars, version-checked writes with conflict reconciliation.
 
-**Live app:** `https://godhuber.github.io/Scratchpad/`
+**Deploy target:** `https://godhuber.github.io/Scratchpad/` — *not live yet.* The repository owner must
+complete section 4.1 (install the workflows) and 4.2 (enable Pages). There is no public deployment to
+try until those two one-time steps are done; the app is otherwise complete and runs locally with
+`npm run dev`.
 
 ---
 
@@ -25,7 +28,8 @@ src/
   integrations/      Supabase client (PKCE)
   styles/            Tailwind theme + paper design system
 supabase/migrations/ SQL schema, functions, RLS, realtime, hardening (applied in order)
-.github/workflows/   ci.yml, deploy.yml
+deployment/workflows/ ci.yml + deploy.yml (source of truth; see 4.1 for why they are not in .github/)
+scripts/             install-workflows.sh helper
 plan.md              architecture plan and review corrections
 ```
 
@@ -250,7 +254,8 @@ Things that can only be verified in a real browser with real accounts:
 - [ ] A second account cannot see it (open the same URL in a private window).
 
 **Canvas**
-- [ ] Text, brush, eraser (click-to-delete), select/move/resize, duplicate, layer order, arrows to nudge, Ctrl/⌘+Z undo.
+- [ ] Text, brush, eraser (click any object to delete it, undo restores it), select/move/resize, duplicate, layer order, arrows to nudge, Ctrl/⌘+Z undo.
+- [ ] Drawing tools click *through* media cards (brush/eraser work over a card), while Select interacts with the card body (player, Open original).
 - [ ] Reload restores the scene; the sync pill shows Saving → Saved.
 - [ ] Two browsers on the same team: creating/moving/deleting an item appears live.
 - [ ] Viewer account sees a read-only canvas and no destructive controls.
