@@ -1,0 +1,38 @@
+# Supabase CLI project configuration.
+# The canonical schema lives in ./migrations and can be replayed with:
+#   supabase link --project-ref <ref> && supabase db push
+project_id = "scratchpad"
+
+[api]
+enabled = true
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 17
+
+[realtime]
+enabled = true
+
+[auth]
+enabled = true
+site_url = "https://godhuber.github.io/Scratchpad/"
+additional_redirect_urls = [
+  "https://godhuber.github.io/Scratchpad/",
+  "http://localhost:5173/",
+  "http://localhost:4173/",
+]
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+
+[auth.external.google]
+enabled = true
+# Values are supplied per environment; never commit real secrets.
+client_id = "env(SUPABASE_AUTH_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_GOOGLE_SECRET)"
+skip_nonce_check = false

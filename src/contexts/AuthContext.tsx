@@ -1,0 +1,216 @@
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import type { Session, User } from '@supabase/supabase-js';
+import { authRedirectUrl, supabase } from '../integrations/supabase/client';
+import type { Profile } from '../types';
+import { humanizeError } from '../lib/errors';
+
+interface AuthContextValue {
+  session: Session | null;
+  user: User | null;
+  profile: Profile | null;
+  loading: boolean;
+  signInWithGoogle: () => Promise<void>;
+  signInWithEmail: (email: string, password: string) => Promise<void>;
+  signUpWithEmail: (email: string, password: string, displayName: string) => Promise<{ needsConfirmation: boolean }>;
+  updateProfile: (patch: { display_name?: string; avatar_url?: string | null }) => Promise<void>;
+  signOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextValue | null>(null);
+
+/** Where to send the user after the OAuth/email-link round trip. */
+const PENDING_PATH_KEY = 'scratchpad.pendingPath';
+
+export function rememberPendingPath(path: string) {
+  try {
+    sessionStorage.setItem(PENDING_PATH_KEY, path);
+  } catch {
+    /* storage can be unavailable in private mode; the link still works */
+  }
+}
+
+export function consumePendingPath(): string | null {
+  try {
+    const value = sessionStorage.getItem(PENDING_PATH_KEY);
+    if (value) sessionStorage.removeItem(PENDING_PATH_KEY);
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const profileUserId = useRef<string | null>(null);
+
+  const loadProfile = useCallback(async (user: User) => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (error) {
+      console.warn('[scratchpad] profile load failed', error.message);
+      return;
+    }
+    if (data) {
+      profileUserId.current = user.id;
+      setProfile(data as Profile);
+      return;
+    }
+    // Trigger normally creates the profile; if it is missing (first login race),
+    // create it from the auth metadata.
+    const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
+    const displayName =
+      (typeof meta['full_name'] === 'string' && meta['full_name']) ||
+      (typeof meta['name'] === 'string' && meta['name']) ||
+      user.email?.split('@')[0] ||
+      'New collaborator';
+    const avatar =
+      (typeof meta['avatar_url'] === 'string' && meta['avatar_url']) ||
+      (typeof meta['picture'] === 'string' && meta['picture']) ||
+      null;
+
+    const { data: created, error: createError } = await supabase
+      .from('profiles')
+      .upsert({ id: user.id, display_name: displayName, avatar_url: avatar }, { onConflict: 'id' })
+      .select()
+      .maybeSingle();
+    if (createError) {
+      console.warn('[scratchpad] profile bootstrap failed', createError.message);
+      return;
+    }
+    if (created) {
+      profileUserId.current = user.id;
+      setProfile(created as Profile);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (cancelled) return;
+      setSession(data.session);
+      if (data.session?.user) void loadProfile(data.session.user);
+      setLoading(false);
+    });
+
+    const { data: subscription } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      if (nextSession?.user) {
+        if (profileUserId.current !== nextSession.user.id) void loadProfile(nextSession.user);
+      } else {
+        profileUserId.current = null;
+        setProfile(null);
+      }
+      setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.subscription.unsubscribe();
+    };
+  }, [loadProfile]);
+
+  const signInWithGoogle = useCallback(async () => {
+    if (!supabase) throw new Error('Supabase is not configured');
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: authRedirectUrl(),
+        queryParams: { prompt: 'select_account' },
+      },
+    });
+    if (error) throw new Error(humanizeError(error));
+  }, []);
+
+  const signInWithEmail = useCallback(async (email: string, password: string) => {
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    if (error) throw new Error(humanizeError(error));
+  }, []);
+
+  const signUpWithEmail = useCallback(async (email: string, password: string, displayName: string) => {
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: {
+        data: { full_name: displayName.trim() },
+        emailRedirectTo: authRedirectUrl(),
+      },
+    });
+    if (error) throw new Error(humanizeError(error));
+    return { needsConfirmation: !data.session };
+  }, []);
+
+  const updateProfile = useCallback(
+    async (patch: { display_name?: string; avatar_url?: string | null }) => {
+      if (!session?.user) throw new Error('Not signed in');
+      const { data, error } = await supabase
+        .from('profiles')
+        .update(patch)
+        .eq('id', session.user.id)
+        .select()
+        .maybeSingle();
+      if (error) throw new Error(humanizeError(error));
+      if (data) setProfile(data as Profile);
+    },
+    [session?.user],
+  );
+
+  const refreshProfile = useCallback(async () => {
+    if (session?.user) await loadProfile(session.user);
+  }, [session?.user, loadProfile]);
+
+  const signOut = useCallback(async () => {
+    await supabase.auth.signOut();
+    setProfile(null);
+  }, []);
+
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      session,
+      user: session?.user ?? null,
+      profile,
+      loading,
+      signInWithGoogle,
+      signInWithEmail,
+      signUpWithEmail,
+      updateProfile,
+      signOut,
+      refreshProfile,
+    }),
+    [
+      session,
+      profile,
+      loading,
+      signInWithGoogle,
+      signInWithEmail,
+      signUpWithEmail,
+      updateProfile,
+      signOut,
+      refreshProfile,
+    ],
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth(): AuthContextValue {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used inside AuthProvider');
+  return ctx;
+}
