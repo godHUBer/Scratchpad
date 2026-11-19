@@ -437,7 +437,7 @@ export function WorkspacePage() {
           onUndoAvailable={setUndoAvailable}
           onZoomChange={setZoom}
           onEraseNotice={() =>
-            toast.info('The eraser removes objects: click a drawing or card with the eraser to delete it.')
+            toast.info('Eraser: click a drawing, text or card to delete it. Ctrl+Z brings it back.')
           }
           onOpenCardEditor={(item) => {
             if (!guardWrite()) return;

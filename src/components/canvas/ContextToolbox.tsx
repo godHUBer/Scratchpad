@@ -162,7 +162,7 @@ function EmptyContext({
 }) {
   return (
     <div className="space-y-3 text-sm">
-      {(tool === 'brush' || tool === 'eraser') && (
+      {tool === 'brush' && (
         <div>
           <label className="label" htmlFor="brush-size">
             Brush size · {brushSize}px
@@ -177,14 +177,18 @@ function EmptyContext({
             className="w-full accent-ink"
             disabled={!canWrite}
           />
-          {tool === 'brush' ? (
-            <>
-              <p className="label mt-2">Brush colour</p>
-              <Swatches value={brushColor} onChange={setBrushColor} />
-            </>
-          ) : (
-            <p className="mt-2 text-xs text-ink-soft">The eraser paints with the paper colour.</p>
-          )}
+          <p className="label mt-2">Brush colour</p>
+          <Swatches value={brushColor} onChange={setBrushColor} />
+        </div>
+      )}
+
+      {tool === 'eraser' && (
+        <div className="space-y-2">
+          <p className="text-sm font-extrabold">Click to erase</p>
+          <p className="text-xs text-ink-soft">
+            Click any drawing, text box or card to remove it. The whole object disappears — undo with
+            Ctrl/⌘+Z, or shift+Ctrl+Z to bring it back.
+          </p>
         </div>
       )}
 

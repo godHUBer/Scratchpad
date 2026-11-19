@@ -22,6 +22,9 @@ import type { Bookmark, CanvasItem, MediaAsset } from '../../types';
 import type { NewCanvasItem } from '../../hooks/useCanvasItems';
 import { clamp } from '../../lib/format';
 
+const CARD_TYPES = ['image', 'audio', 'video', 'media_link', 'bookmark'] as const;
+const isCardType = (type: string) => (CARD_TYPES as readonly string[]).includes(type);
+
 export interface CanvasApi {
   items: CanvasItem[];
   createItem: (input: NewCanvasItem) => Promise<CanvasItem>;
@@ -213,9 +216,52 @@ export function WorkspaceCanvas({
       const world = stagePointer(stage);
       if (world) onCreateText({ x: world.x, y: world.y });
     }
-    if (isStageClick && tool === 'eraser' && canWrite) {
+    if (tool === 'eraser' && canWrite) {
       event.evt.preventDefault();
-      onEraseNotice();
+      // Konva nodes report themselves as target; cards are DOM so they are
+      // handled by the card shell (see eraseCard below). Empty space = hint.
+      const nodeTarget = event.target as Konva.Node;
+      const itemId = isStageClick ? undefined : findItemIdForNode(nodeTarget);
+      if (itemId) void eraseItem(itemId);
+      else onEraseNotice();
+    }
+  };
+
+  /** walk up the Konva tree to the group we tagged with `item-<id>` */
+  const findItemIdForNode = (node: Konva.Node): string | undefined => {
+    let current: Konva.Node | null = node;
+    while (current) {
+      const name = current.name();
+      if (name?.startsWith('item-')) return name.slice('item-'.length);
+      current = current.getParent();
+    }
+    return undefined;
+  };
+
+  const eraseItem = async (id: string) => {
+    const item = api.items.find((candidate) => candidate.id === id);
+    if (!item) return;
+    try {
+      await api.deleteItem(id);
+      if (selectedIds.includes(id)) setSelectedIds(selectedIds.filter((value) => value !== id));
+      undo.push({
+        label: 'erase',
+        undo: async () => {
+          await api.createItem({
+            item_type: item.item_type,
+            position_x: item.position_x,
+            position_y: item.position_y,
+            width: item.width,
+            height: item.height,
+            content: item.content,
+            bookmark_id: item.bookmark_id,
+            media_asset_id: item.media_asset_id,
+          });
+        },
+        redo: () => api.deleteItem(id).then(() => undefined),
+      });
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'Could not erase that object.');
     }
   };
 
@@ -387,10 +433,19 @@ export function WorkspaceCanvas({
     ) {
       return;
     }
+    const before = { x: item.position_x, y: item.position_y, width: item.width, height: item.height };
+    const after = { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) };
     try {
-      await api.moveItems([
-        { id: item.id, x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
-      ]);
+      await api.moveItems([{ id: item.id, x: after.x, y: after.y, w: after.width, h: after.height }]);
+      undo.push({
+        label: before.width !== after.width || before.height !== after.height ? 'resize' : 'move',
+        undo: () =>
+          api
+            .moveItems([{ id: item.id, x: before.x, y: before.y, w: before.width, h: before.height }])
+            .then(() => undefined),
+        redo: () =>
+          api.moveItems([{ id: item.id, x: after.x, y: after.y, w: after.width, h: after.height }]).then(() => undefined),
+      });
     } catch (err) {
       onError(err instanceof Error ? err.message : 'Could not save the card position.');
     }
@@ -405,14 +460,17 @@ export function WorkspaceCanvas({
     });
   }, [api.items]);
 
-  const cardItems = sorted.filter((item) =>
-    ['image', 'audio', 'video', 'media_link', 'bookmark'].includes(item.item_type),
-  );
+  const cardItems = sorted.filter((item) => isCardType(item.item_type));
   const cardInteraction = tool === 'select';   // other tools click through the DOM cards
   const cardDragEnabled = canWrite && tool === 'select';
   // eraser works on every layer (drawings, text, cards); Konva nodes stay
   // interactive so the stage sees the click even on top of a shape
+  const eraseMode = tool === 'eraser' && canWrite;
   const nodeInteraction = tool === 'select' || tool === 'eraser';
+  const selectHandler = (id: string, additive: boolean) => {
+    if (eraseMode) return;
+    handleSelect(id, additive);
+  };
 
   return (
     <div
@@ -484,7 +542,7 @@ export function WorkspaceCanvas({
                 media={null}
                 selected={selectedIds.includes(item.id)}
                 canInteract={nodeInteraction}
-                onSelect={handleSelect}
+                onSelect={selectHandler}
                 onDragStart={handleNodeDragStart}
                 onDragEnd={(id, x, y) => void handleNodeDragEnd(id, x, y)}
                 onDoubleClick={onOpenTextEditor}
@@ -497,7 +555,7 @@ export function WorkspaceCanvas({
                 media={null}
                 selected={selectedIds.includes(item.id)}
                 canInteract={tool === 'select' || tool === 'eraser'}
-                onSelect={handleSelect}
+                onSelect={selectHandler}
                 onDragStart={handleNodeDragStart}
                 onDragEnd={(id, x, y) => void handleNodeDragEnd(id, x, y)}
                 onDoubleClick={onOpenTextEditor}
@@ -531,7 +589,7 @@ export function WorkspaceCanvas({
             />
           ) : null}
 
-          {selected.length === 1 && !resizing ? (
+          {selected.length === 1 && !resizing && !isCardType(selected[0]!.item_type) ? (
             <SelectionFrame
               item={selected[0]!}
               scale={viewport.scale}
@@ -580,11 +638,14 @@ export function WorkspaceCanvas({
               item={item}
               viewport={viewport}
               canWrite={cardDragEnabled}
+              interactive={cardInteraction || eraseMode}
+              selected={isSelected}
               isDragging={draggingCard === item.id}
-              onDragStart={() => {
-                setSelectedIds(isSelected ? selectedIds : [item.id]);
-                setDraggingCard(item.id);
-              }}
+              onActivate={(additive) => handleSelect(item.id, additive)}
+              eraseMode={eraseMode}
+              onErase={() => void eraseItem(item.id)}
+              onDragStart={() => setDraggingCard(item.id)}
+              onDragCancel={() => setDraggingCard(null)}
               onDragMove={() => {}}
               onDragEnd={(rect) => {
                 setDraggingCard(null);
@@ -597,6 +658,7 @@ export function WorkspaceCanvas({
                 className="h-full w-full overflow-hidden"
                 style={{
                   border: `${isSelected ? 3 : 2.5}px solid #080808`,
+                  transition: 'border-width 80ms ease-out',
                   borderRadius: 14,
                   boxShadow: '3px 3px 0 0 #080808',
                   background: item.item_type === 'bookmark' ? bookmarks[item.bookmark_id ?? '']?.color ?? '#f7c948' : '#fffdf6',

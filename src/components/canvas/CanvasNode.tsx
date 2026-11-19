@@ -119,6 +119,7 @@ export function CanvasNode({
           }}
           onDblClick={() => onDoubleClick(item)}
           onDblTap={() => onDoubleClick(item)}
+          name={`item-${item.id}`}
         />
         <Text
           x={item.position_x + 14}
@@ -169,15 +170,6 @@ export function CanvasNode({
       {isImageCard && image ? (
         <KonvaImage image={image} width={item.width} height={item.height} cornerRadius={CARD_RADIUS} listening={false} />
       ) : null}
-      <Rect
-        width={item.width}
-        height={item.height}
-        cornerRadius={CARD_RADIUS}
-        stroke={selected ? '#080808' : 'transparent'}
-        strokeWidth={3}
-        dash={selected ? [10, 6] : undefined}
-        listening={false}
-      />
     </Group>
   );
 }

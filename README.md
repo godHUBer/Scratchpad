@@ -140,7 +140,26 @@ Enabled by default and needs no extra configuration. On the free tier Supabase s
 
 ## 4. Deploying to GitHub Pages
 
-1. Push to `main` (workflow files are in `.github/workflows/`).
+### 4.1 Install the workflows first (one extra step)
+
+The two YAML files ship in `deployment/workflows/` because the automation token used to scaffold
+this repository is **not allowed to push `.github/workflows/**`** (GitHub returns `403: refusing to
+allow a GitHub App to create or update workflow … without 'workflows' permission`). Nothing else is
+missing — they are complete, tested workflow definitions.
+
+Either copy them in by hand:
+
+```bash
+./scripts/install-workflows.sh   # copies both files, prints the git commands
+```
+
+or create the files in the GitHub web editor by pasting the contents of
+`deployment/workflows/ci.yml` and `deployment/workflows/deploy.yml`. Then commit, push, and merge
+into `main` from an account (or token) that has the `workflows` permission.
+
+### 4.2 Enable Pages
+
+1. Push to `main` (workflow files now in `.github/workflows/`).
 2. Repository → **Settings → Pages → Source: GitHub Actions** (one time).
 3. The workflow builds with `VITE_BASE_PATH=/<repo>/`, verifies lint/typecheck/tests, and deploys `dist/`.
 

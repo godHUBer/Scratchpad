@@ -19,9 +19,18 @@ interface SelectedCardBoxProps {
   item: CanvasItem;
   /** screen-space position/zoom of the canvas */
   viewport: { x: number; y: number; scale: number };
+  /** editors and owners may move/resize; viewers may only look */
   canWrite: boolean;
+  /** false while a drawing tool is active: let the pointer reach the stage */
+  interactive: boolean;
+  selected: boolean;
   isDragging: boolean;
+  /** eraser tool: clicking the card deletes it instead of dragging it */
+  eraseMode?: boolean;
+  onErase?: () => void;
+  onActivate: (additive: boolean) => void;
   onDragStart: () => void;
+  onDragCancel: () => void;
   onDragMove: (rect: Rect) => void;
   onDragEnd: (rect: Rect) => void;
   onResizeMove: (rect: Rect) => void;
@@ -29,17 +38,25 @@ interface SelectedCardBoxProps {
   children: React.ReactNode;
 }
 
+const NO_DRAG = 'button, a, audio, video, input, select, textarea, [data-no-drag]';
+
 /**
  * The card bodies live in the DOM (so <video>/<audio>/<a> work natively), which
  * means they need their own drag + resize affordances that mirror the Konva
- * node in screen space. This component owns that interaction.
+ * shape in screen space. This component owns that interaction.
  */
 export function SelectedCardBox({
   item,
   viewport,
   canWrite,
+  interactive,
+  selected,
   isDragging,
+  eraseMode = false,
+  onErase,
+  onActivate,
   onDragStart,
+  onDragCancel,
   onDragMove,
   onDragEnd,
   onResizeMove,
@@ -51,9 +68,13 @@ export function SelectedCardBox({
     null,
   );
   const dragRef = useRef<{ startX: number; startY: number; origin: Rect } | null>(null);
+  const movedRef = useRef(false);
 
+  // discard any in-flight geometry when the item is replaced (realtime refresh)
   useEffect(() => {
     setLive(null);
+    dragRef.current = null;
+    movedRef.current = false;
   }, [item.id]);
 
   const rect = live ?? { x: item.position_x, y: item.position_y, width: item.width, height: item.height };
@@ -64,18 +85,25 @@ export function SelectedCardBox({
     height: rect.height * viewport.scale,
   };
 
-  // ---- dragging (only when not starting on an interactive control)
   const onPointerDown = (event: React.PointerEvent) => {
+    if (!interactive) return;
+    if (eraseMode) {
+      event.preventDefault();
+      event.stopPropagation();
+      onErase?.();
+      return;
+    }
+    onActivate(event.shiftKey);
     if (!canWrite) return;
     const target = event.target as HTMLElement;
-    if (target.closest('button, a, audio, video, input, select, textarea, [data-no-drag]')) return;
+    if (target.closest(NO_DRAG)) return;
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     dragRef.current = {
       startX: event.clientX,
       startY: event.clientY,
       origin: { x: item.position_x, y: item.position_y, width: item.width, height: item.height },
     };
-    onDragStart();
+    movedRef.current = false;
   };
 
   const onPointerMove = (event: React.PointerEvent) => {
@@ -87,14 +115,21 @@ export function SelectedCardBox({
       onResizeMove(next);
       return;
     }
-    if (!dragRef.current) return;
-    const dx = (event.clientX - dragRef.current.startX) / viewport.scale;
-    const dy = (event.clientY - dragRef.current.startY) / viewport.scale;
+    const drag = dragRef.current;
+    if (!drag) return;
+    const dx = (event.clientX - drag.startX) / viewport.scale;
+    const dy = (event.clientY - drag.startY) / viewport.scale;
     const next = {
-      ...dragRef.current.origin,
-      x: Math.round(dragRef.current.origin.x + dx),
-      y: Math.round(dragRef.current.origin.y + dy),
+      ...drag.origin,
+      x: Math.round(drag.origin.x + dx),
+      y: Math.round(drag.origin.y + dy),
     };
+    if (!movedRef.current) {
+      // threshold so a plain click never triggers a write
+      if (Math.abs(event.clientX - drag.startX) < 3 && Math.abs(event.clientY - drag.startY) < 3) return;
+      movedRef.current = true;
+      onDragStart();
+    }
     setLive(next);
     onDragMove(next);
   };
@@ -103,19 +138,24 @@ export function SelectedCardBox({
     if (resize) {
       const finalRect = live ?? rect;
       setResize(null);
+      setLive(null);
       onResizeEnd(finalRect);
       return;
     }
-    if (dragRef.current) {
-      dragRef.current = null;
-      const finalRect = live ?? rect;
-      setLive(null);
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    const finalRect = live ?? rect;
+    setLive(null);
+    if (movedRef.current) {
+      movedRef.current = false;
       onDragEnd(finalRect);
+    } else {
+      onDragCancel();
     }
   };
 
   const handlePointerDown = (handle: ResizeHandle) => (event: React.PointerEvent) => {
-    if (!canWrite) return;
+    if (!canWrite || !interactive) return;
     event.stopPropagation();
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     setResize({
@@ -128,7 +168,12 @@ export function SelectedCardBox({
   return (
     <div
       className={`absolute select-none ${isDragging ? 'z-20' : 'z-10'}`}
-      style={{ ...style, touchAction: 'none', cursor: canWrite ? 'grab' : 'default' }}
+      style={{
+        ...style,
+        touchAction: 'none',
+        pointerEvents: interactive ? 'auto' : 'none',
+        cursor: eraseMode ? 'crosshair' : canWrite ? 'grab' : 'default',
+      }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -136,13 +181,13 @@ export function SelectedCardBox({
       data-card={item.id}
     >
       <div className="h-full w-full">{children}</div>
-      {canWrite ? (
-        <div
-          className="pointer-events-none absolute -inset-[5px] rounded-[16px] border-[2.5px] border-dashed border-ink"
-          aria-hidden
-        >
+      {canWrite && selected && !eraseMode ? (
+        <div className="pointer-events-none absolute -inset-[5px] rounded-[16px] border-[2.5px] border-dashed border-ink" aria-hidden>
           {RESIZE_HANDLES.map((handle) => {
-            const pos = handlePosition({ x: 0, y: 0, width: rect.width * viewport.scale, height: rect.height * viewport.scale }, handle);
+            const pos = handlePosition(
+              { x: 0, y: 0, width: rect.width * viewport.scale, height: rect.height * viewport.scale },
+              handle,
+            );
             return (
               <span
                 key={handle}
