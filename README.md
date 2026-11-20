@@ -420,6 +420,41 @@ Two verification passes were executed against the live project (`lkxygnbvkdlwacb
 
    Probe rows were deleted afterwards (verified: 0 users, 0 workspaces, 0 invitations left).
 
+## 6a. Admin console (server-side key)
+
+`/#/admin`, linked from the bottom of the sign-in screen. It is a **separate**
+identity from a normal account: no email, no Supabase user, no JWT.
+
+- The key lives only as a **bcrypt hash** in `public.admin_config`. It is never
+  in the repo, the bundle, or `localStorage`. Set or rotate it as the operator:
+
+  ```sql
+  select public.admin_set_key('a long random passphrase');
+  -- key_hint shows the last four characters, e.g. ----evwr
+  ```
+
+  `admin_set_key` is executable by *nobody* through the API (`anon` and
+  `authenticated` are both revoked), so it can only be run from the SQL editor
+  or the service role. Rotating the key revokes every live admin session.
+- A correct key is exchanged once for a 64-character random **session token**
+  (SHA-256 hash stored, 8-hour expiry, revocable). Only the token is kept in the
+  browser.
+- **5 wrong keys in 15 minutes** locks the form for everyone until the window
+  rolls over. `admin_login` returns refusals as a `reason` code rather than
+  raising, precisely so the failed-attempt row survives the transaction — an
+  exception would roll it back and the lockout would never count.
+- What it can do: list every registered email with an online dot
+  (`profiles.last_seen_at` is stamped by a `heartbeat()` RPC on app load and once
+  a minute while the tab is visible — under 2 minutes reads as online), delete a
+  user, set a user's password (which also deletes their `auth.sessions` and
+  `auth.refresh_tokens`, so every device is signed out), delete a workspace, and
+  revoke admin sessions.
+- Nothing in the admin schema is readable or writable by a client: RLS is on and
+  `anon`/`authenticated` have no table grants at all. The only way in is a
+  `SECURITY DEFINER` RPC holding a valid token.
+- **Audit log**: every action is appended to `admin_audit_log` and shown on the
+  *Audit* tab. There is no delete path for it in the app.
+
 ---
 
 ## 7. Manual QA checklist

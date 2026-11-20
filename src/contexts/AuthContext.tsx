@@ -212,6 +212,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw new Error(humanizeError(error));
   }, []);
 
+  // "Online" for the admin console = any page load within the last couple of
+  // minutes. Realtime presence alone is not queryable from SQL, so each signed-in
+  // client stamps profiles.last_seen_at; failures are ignored on purpose.
+  const userId = session?.user.id ?? null;
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    const beat = () => {
+      if (cancelled || document.visibilityState === 'hidden') return;
+      void supabase.rpc('heartbeat');
+    };
+    beat();
+    const interval = window.setInterval(beat, 60_000);
+    document.addEventListener('visibilitychange', beat);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', beat);
+    };
+  }, [userId]);
+
   const refreshProfile = useCallback(async () => {
     if (session?.user) await loadProfile(session.user);
   }, [session?.user, loadProfile]);
