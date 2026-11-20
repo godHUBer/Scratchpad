@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useWorkspaces } from '../contexts/WorkspaceContext';
 import { useToast } from '../contexts/ToastContext';
+import { useTeamsPage } from '../hooks/useTeamsPage';
 import { CreateTeamModal } from '../components/teams/CreateTeamModal';
 import { InviteModal } from '../components/teams/InviteModal';
 import { MemberListModal } from '../components/teams/MemberListModal';
@@ -15,84 +16,46 @@ import { PageLoader } from '../components/ui/Spinner';
 import { fullDate, relativeTime } from '../lib/format';
 import { humanizeError } from '../lib/errors';
 import { roleDescription, roleLabel } from '../lib/permissions';
-import { invitationUrl } from '../integrations/supabase/client';
 import type { Invitation, MemberWithProfile, Role, WorkspaceWithMembership } from '../types';
 
 export function TeamsPage() {
-  // The route is /teams/:workspaceId (App.tsx). This used to read `teamId`,
-  // which is always undefined, so the detail panel never left "Pick a team" and
-  // clicking a second team looked like a dead link.
-  const { workspaceId: teamId } = useParams();
-  const navigate = useNavigate();
-  const toast = useToast();
+  const model = useTeamsPage();
   const {
-    workspaces,
     loading,
-    renameWorkspace,
-    deleteTeam,
-    leaveWorkspace,
-    setActiveWorkspace,
+    teammates,
+    selected,
     members,
-    loadMembers,
-    sentInvitations,
-    loadInvitations,
-    respondToInvitation,
-    reissueInvitation,
+    reissued,
+    busy,
+    createOpen,
+    setCreateOpen,
+    inviteFor,
+    setInviteFor,
+    membersFor,
+    setMembersFor,
+    renameFor,
+    setRenameFor,
+    deleteFor,
+    setDeleteFor,
+    leaveFor,
+    setLeaveFor,
+    menuFor,
+    setMenuFor,
+    create,
+    rename,
+    confirmDelete,
+    confirmLeave,
+    revokeInvitation,
+    reissueInvite,
+    openWorkspace,
+    inviteFromMembers,
     refresh,
-  } = useWorkspaces();
+  } = model;
 
-  const [createOpen, setCreateOpen] = useState(false);
-  const [inviteFor, setInviteFor] = useState<WorkspaceWithMembership | null>(null);
-  const [membersFor, setMembersFor] = useState<WorkspaceWithMembership | null>(null);
-  const [renameFor, setRenameFor] = useState<WorkspaceWithMembership | null>(null);
-  const [deleteFor, setDeleteFor] = useState<WorkspaceWithMembership | null>(null);
-  const [leaveFor, setLeaveFor] = useState<WorkspaceWithMembership | null>(null);
-  const [busy, setBusy] = useState(false);
-  // Which team's card menu is open on the left. Only one at a time.
-  const [menuFor, setMenuFor] = useState<string | null>(null);
-  // Re-issued link shown inline in the invitation rows.
-  const [reissued, setReissued] = useState<{ id: string; url: string; expiresAt: string } | null>(null);
+  const navigate = useNavigate();
+  const { sentInvitations } = useWorkspaces();
 
-  const teammates = useMemo(() => workspaces.filter((w) => w.type === 'team'), [workspaces]);
-  const selected = useMemo(
-    () => teammates.find((w) => w.id === teamId) ?? null,
-    [teammates, teamId],
-  );
-
-  useEffect(() => {
-    void loadInvitations();
-  }, [loadInvitations]);
-
-  // Landing on /teams with no team in the URL used to render the dead
-  // "Pick a team" panel even when teams existed. Select the first one so the
-  // page is useful on arrival; the URL still drives everything after that.
-  useEffect(() => {
-    const first = teammates[0];
-    if (!teamId && first) {
-      navigate(`/teams/${first.id}`, { replace: true });
-    }
-  }, [teamId, teammates, navigate]);
-
-  useEffect(() => {
-    if (selected) void loadMembers(selected.id);
-  }, [selected, loadMembers]);
-
-  if (loading && workspaces.length === 0) return <PageLoader />;
-
-  const handleDelete = async () => {
-    if (!deleteFor) return;
-    setBusy(true);
-    try {
-      await deleteTeam(deleteFor.id);
-      toast.success('Team deleted.');
-      setDeleteFor(null);
-      if (selected?.id === deleteFor.id) navigate('/teams');
-    } catch (err) {
-      toast.error(humanizeError(err));
-    } finally {
-      setBusy(false);
-    }
-  };
+  if (loading && teammates.length === 0) return <PageLoader />;
 
   return (
     <div className="mx-auto w-full max-w-6xl p-3 sm:p-5">
@@ -177,8 +140,7 @@ export function TeamsPage() {
                         }}
                         onOpen={() => {
                           setMenuFor(null);
-                          setActiveWorkspace(team.id);
-                          navigate(`/workspace/${team.id}`);
+                          openWorkspace(team.id);
                         }}
                         onDelete={() => {
                           setMenuFor(null);
@@ -198,32 +160,13 @@ export function TeamsPage() {
                 team={selected}
                 members={members}
                 sentInvitations={sentInvitations.filter((i) => i.workspace_id === selected.id)}
-                onOpen={() => {
-                  setActiveWorkspace(selected.id);
-                  navigate(`/workspace/${selected.id}`);
-                }}
+                onOpen={() => openWorkspace(selected.id)}
                 onInvite={() => setMembersFor(selected)}
                 onDelete={() => setDeleteFor(selected)}
                 onLeave={() => setLeaveFor(selected)}
-                onRevoke={async (id) => {
-                  try {
-                    await respondToInvitation(id, 'revoke');
-                    setReissued(null);
-                    toast.success('Invitation revoked.');
-                  } catch (err) {
-                    toast.error(humanizeError(err));
-                  }
-                }}
+                onRevoke={revokeInvitation}
                 onRename={() => setRenameFor(selected)}
-                onReissue={async (id) => {
-                  try {
-                    const result = await reissueInvitation(id);
-                    setReissued({ id, url: invitationUrl(result.token), expiresAt: result.expiresAt });
-                    toast.success('New link created — the old one no longer works.');
-                  } catch (err) {
-                    toast.error(humanizeError(err));
-                  }
-                }}
+                onReissue={reissueInvite}
                 reissued={reissued}
                 onRefresh={() => void refresh()}
               />
@@ -239,11 +182,7 @@ export function TeamsPage() {
       <CreateTeamModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        onCreated={(id) => {
-          setCreateOpen(false);
-          toast.success('Team created — you are the owner.');
-          navigate(`/teams/${id}`);
-        }}
+        onCreated={create}
       />
 
       <InviteModal open={inviteFor !== null} workspace={inviteFor} onClose={() => setInviteFor(null)} />
@@ -252,21 +191,13 @@ export function TeamsPage() {
         open={membersFor !== null}
         workspace={membersFor}
         onClose={() => setMembersFor(null)}
-        onInvite={() => {
-          setInviteFor(membersFor);
-          setMembersFor(null);
-        }}
+        onInvite={inviteFromMembers}
       />
 
       <RenameTeamModal
         team={renameFor}
         onClose={() => setRenameFor(null)}
-        onSave={async (name, description) => {
-          if (!renameFor) return;
-          await renameWorkspace(renameFor.id, name, description);
-          toast.success('Team updated.');
-          setRenameFor(null);
-        }}
+        onSave={rename}
       />
 
       <ConfirmDialog
@@ -277,7 +208,7 @@ export function TeamsPage() {
         confirmLabel="Disband this team"
         requireTyped={deleteFor?.name}
         onClose={() => setDeleteFor(null)}
-        onConfirm={() => void handleDelete()}
+        onConfirm={() => void confirmDelete()}
       >
         <p>
           This deletes the team for <strong>every member</strong> — its canvas items, bookmarks, media links, join links
@@ -293,20 +224,7 @@ export function TeamsPage() {
         busy={busy}
         confirmLabel="Leave team"
         onClose={() => setLeaveFor(null)}
-        onConfirm={async () => {
-          if (!leaveFor) return;
-          setBusy(true);
-          try {
-            await leaveWorkspace(leaveFor.id);
-            toast.success('You left the team.');
-            setLeaveFor(null);
-            navigate('/teams');
-          } catch (err) {
-            toast.error(humanizeError(err));
-          } finally {
-            setBusy(false);
-          }
-        }}
+        onConfirm={() => void confirmLeave()}
       >
         <p>You will need a new invitation to get back in.</p>
       </ConfirmDialog>

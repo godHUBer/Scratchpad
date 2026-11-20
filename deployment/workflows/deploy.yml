@@ -20,11 +20,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
           cache: npm
@@ -70,17 +70,35 @@ jobs:
       # A build with an empty VITE_SUPABASE_URL renders a "not configured"
       # screen instead of the app. Catch that here rather than in the browser.
       - name: Verify bundle has configuration baked in
+        # The host used to be hard-coded here. Once a fork or an owner set their
+        # own VITE_SUPABASE_URL repository variable, the build was correct but
+        # this step still grepped for the original project's host and failed the
+        # deploy. Derive it from the same source of truth the build used.
+        env:
+          EXPECTED_URL: ${{ vars.VITE_SUPABASE_URL }}
         run: |
-          echo "dist/index.html:"
-          cat dist/index.html
-          if ! grep -rq "lkxygnbvkdlwacbcbott.supabase.co" dist/assets/*.js; then
-            echo "::error::No Supabase URL found in the built bundle. Check .env.production / repository variables."
+          if [ -n "$EXPECTED_URL" ]; then
+            host=$(printf '%s' "$EXPECTED_URL" | sed -E 's#^https?://##; s#/+$##')
+          else
+            host=$(grep -E '^VITE_SUPABASE_URL=' .env.production | head -1 | cut -d= -f2- | sed -E 's#^https?://##; s#/+$##')
+          fi
+          if [ -z "$host" ]; then
+            echo "::error::No Supabase URL found in the environment or .env.production."
+            exit 1
+          fi
+          echo "expecting host: $host"
+          if ! grep -rqF "$host" dist/assets/*.js; then
+            echo "::error::The built bundle does not contain $host. Check .env.production / repository variables."
+            exit 1
+          fi
+          if ! grep -rqE 'sb_publishable_|eyJhbGciOi' dist/assets/*.js; then
+            echo "::error::No publishable key found in the built bundle."
             exit 1
           fi
           echo "configuration present in bundle"
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
           path: dist
 
@@ -92,4 +110,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
