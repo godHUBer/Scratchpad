@@ -361,3 +361,4 @@ Things that can only be verified in a real browser with real accounts:
 | Media card says "inaccessible" | Drive file not shared | set **Anyone with the link – Viewer** |
 | `42501` / permission errors | your role forbids it | ask an owner for editor access |
 | Nothing syncs between browsers | Realtime publication missing | rerun `…_realtime.sql` |
+| `cannot add 'presence' callbacks … after 'subscribe()'` after switching tabs | fixed in `usePresence`: the channel depended on profile fields, and token refreshes on tab focus rebuilt it mid-join | update to the latest build; the hook now keys the channel on `(workspaceId, user.id)` only and awaits teardown before re-subscribing |
