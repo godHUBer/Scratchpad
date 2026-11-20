@@ -64,6 +64,16 @@ const PATHS = {
   external: 'M13.4 3.6h7v7M20.1 3.9l-8.6 8.6M17.7 14.1v6.3H3.9V5.8h6.4',
   check: 'M4.2 12.4l5.4 5.8L20 5.9',
   close: 'M6.1 6.1l11.8 11.8M17.9 6.1L6.1 17.9',
+  /*
+    sun / moon for the theme toggle.
+
+    Checked against their neighbours as the header requires: the sun is a ring
+    with eight short rays (never touching the ring, so it survives 14 px), and the
+    moon is a single crescent — one outer arc plus the cut-out. They are read at
+    a glance as opposites, which is the whole job of a toggle icon.
+  */
+  sun: 'M12 16.4a4.4 4.4 0 1 0 0-8.8 4.4 4.4 0 0 0 0 8.8zM12 2.6v2.4M12 19v2.4M4.3 12H1.9M22.1 12h-2.4M6.5 6.5L4.8 4.8M19.2 19.2l-1.7-1.7M17.5 6.5l1.7-1.7M4.8 19.2l1.7-1.7',
+  moon: 'M20.4 14.6A8.9 8.9 0 0 1 9.4 3.6a8.9 8.9 0 1 0 11 11z',
   trash: 'M3.8 7.1h16.4M9.2 7.1V3.8h5.6v3.3M6.1 7.1l1.1 13h9.6l1.1-13M10.2 10.6v6.6M13.8 10.6v6.6',
   zoomIn:
     'M10.7 18.4a7.7 7.7 0 1 0 0-15.4 7.7 7.7 0 0 0 0 15.4zM20.4 20.4l-4.4-4.4M10.7 7.4v6.6M7.4 10.7h6.6',

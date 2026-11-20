@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Layer, Line, Rect, Stage } from 'react-konva';
 import Konva from 'konva';
 import { useCanvasSize } from '../../hooks/useCanvasSize';
+import { useThemeColors } from '../../hooks/useThemeColors';
 import { useUndoStack } from '../../hooks/useUndoStack';
 import { CanvasNode, CanvasCardOverlay } from './CanvasNode';
 import { SelectionFrame } from './SelectionFrame';
@@ -88,6 +89,8 @@ export function WorkspaceCanvas({
   onEraseNotice = () => {},
 }: WorkspaceCanvasProps) {
   const { ref: containerRef, size } = useCanvasSize();
+  // Konva cannot read CSS variables; this resolves the theme to real colours.
+  const themeColors = useThemeColors();
   const [viewport, setViewport] = useState<Viewport>({ scale: 1, x: 0, y: 0 });
   const [draft, setDraft] = useState<DraftStroke | null>(null);
   const [marquee, setMarquee] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
@@ -212,6 +215,18 @@ export function WorkspaceCanvas({
   // unusable on a tablet or phone. A two-finger gesture is handled here and
   // swallows the single-pointer path for its duration, so a pinch never also
   // drags a card or paints a stroke.
+  /*
+    Drag-to-erase.
+
+    The eraser used to act only on mousedown, so the tool deleted whatever was
+    directly under the first click and nothing else — hover and drag did
+    nothing, which is not how an eraser is expected to behave. `erasing` marks a
+    stroke in progress; `erasedThisDrag` stops the same item being deleted twice
+    when the pointer crosses it repeatedly or a fast move samples it twice.
+  */
+  const erasing = useRef(false);
+  const erasedThisDrag = useRef<Set<string>>(new Set());
+
   const gesture = useRef<{
     distance: number;
     center: { x: number; y: number };
@@ -308,13 +323,28 @@ export function WorkspaceCanvas({
     }
     if (tool === 'eraser' && canWrite) {
       event.evt.preventDefault();
+      erasing.current = true;
+      erasedThisDrag.current = new Set();
       // Konva nodes report themselves as target; cards are DOM so they are
       // handled by the card shell (see eraseCard below). Empty space = hint.
       const nodeTarget = event.target as Konva.Node;
       const itemId = isStageClick ? undefined : findItemIdForNode(nodeTarget);
-      if (itemId) void eraseItem(itemId);
+      if (itemId) eraseOnce(itemId);
       else onEraseNotice();
     }
+  };
+
+  /**
+   * Erases an item at most once per drag.
+   *
+   * The guard matters: deleting is async, so without it a stroke that crosses
+   * the same item twice would fire two deletes, the second of which fails
+   * against an id that is already gone and surfaces a spurious error toast.
+   */
+  const eraseOnce = (id: string) => {
+    if (erasedThisDrag.current.has(id)) return;
+    erasedThisDrag.current.add(id);
+    void eraseItem(id);
   };
 
   /** walk up the Konva tree to the group we tagged with `item-<id>` */
@@ -356,6 +386,21 @@ export function WorkspaceCanvas({
   };
 
   const onMouseMove = () => {
+    if (erasing.current && canWrite) {
+      // Konva reports the hovered node for the current pointer position, so a
+      // drag erases every object the stroke passes over rather than only the
+      // one under the initial press.
+      const stage = stageRef.current;
+      const pointer = stage?.getPointerPosition();
+      const hovered = stage && pointer ? stage.getIntersection(pointer) : null;
+      if (hovered) {
+        const id = findItemIdForNode(hovered);
+        if (id) {
+          eraseOnce(id);
+          return;
+        }
+      }
+    }
     if (draft) {
       const stage = stageRef.current;
       const world = stagePointer(stage);
@@ -385,6 +430,10 @@ export function WorkspaceCanvas({
   }
 
   const onMouseUp = async () => {
+    // end an erase stroke; nothing else needs committing for it
+    erasing.current = false;
+    erasedThisDrag.current = new Set();
+
     // finish marquee selection
     if (marqueeStart.current && marquee) {
       const hits = api.items.filter((item) =>
@@ -568,7 +617,7 @@ export function WorkspaceCanvas({
       className="relative h-full w-full overflow-hidden bg-cream-deep/40"
       style={{
         backgroundImage:
-          'radial-gradient(circle, rgba(8,8,8,0.16) 1.2px, transparent 1.2px)',
+          `radial-gradient(circle, ${themeColors.grid} 1.2px, transparent 1.2px)`,
         backgroundSize: `${24 * viewport.scale}px ${24 * viewport.scale}px`,
         backgroundPosition: `${viewport.x}px ${viewport.y}px`,
         cursor: tool === 'brush' || tool === 'eraser' ? 'crosshair' : tool === 'text' ? 'text' : 'default',
@@ -681,7 +730,7 @@ export function WorkspaceCanvas({
               width={marquee.width}
               height={marquee.height}
               fill="rgba(247,201,72,0.28)"
-              stroke="#080808"
+              stroke={themeColors.ink}
               strokeWidth={2 / viewport.scale}
               dash={[8 / viewport.scale, 6 / viewport.scale]}
               listening={false}
@@ -693,6 +742,7 @@ export function WorkspaceCanvas({
               item={selected[0]!}
               scale={viewport.scale}
               canWrite={canWrite}
+              colors={themeColors}
               onStartResize={(handle) => {
                 const target = selected[0]!;
                 resizedRef.current = false;
@@ -718,7 +768,7 @@ export function WorkspaceCanvas({
               y={resizing.rect.y}
               width={resizing.rect.width}
               height={resizing.rect.height}
-              stroke="#080808"
+              stroke={themeColors.ink}
               strokeWidth={2 / viewport.scale}
               dash={[10 / viewport.scale, 6 / viewport.scale]}
               listening={false}
@@ -756,10 +806,10 @@ export function WorkspaceCanvas({
               <div
                 className="h-full w-full overflow-hidden"
                 style={{
-                  border: `${isSelected ? 3 : 2.5}px solid #080808`,
+                  border: `${isSelected ? 3 : 2.5}px solid ${themeColors.ink}`,
                   transition: 'border-width 80ms ease-out',
                   borderRadius: 14,
-                  boxShadow: '3px 3px 0 0 #080808',
+                  boxShadow: `3px 3px 0 0 ${themeColors.ink}`,
                   // Image cards must be transparent here: the Konva layer below
                   // paints the bitmap, and an opaque background would hide it.
                   // (That bug is why images never showed a preview while moving

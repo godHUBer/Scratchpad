@@ -3,6 +3,7 @@ import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useWorkspaces } from '../contexts/WorkspaceContext';
 import { Avatar } from './ui/Avatar';
+import { ThemeToggle } from './ui/ThemeToggle';
 import { roleLabel } from '../lib/permissions';
 import { CreateTeamModal } from './teams/CreateTeamModal';
 import { Icon, type IconName } from './ui/Icon';
@@ -96,7 +97,7 @@ export function NavigationSidebar({ open, onClose, onOpenCreateTeam, onJoinPromp
                   {item.label}
                 </span>
                 {item.to === '/invitations' && pendingCount > 0 ? (
-                  <span className="chip border-ink bg-coral text-ink">{pendingCount}</span>
+                  <span className="chip chip-accent border-ink bg-coral text-ink-fixed">{pendingCount}</span>
                 ) : null}
               </NavLink>
             ))}
@@ -169,6 +170,8 @@ export function NavigationSidebar({ open, onClose, onOpenCreateTeam, onJoinPromp
           >
             Account / Profile
           </Link>
+          {/* Appearance sits with the other account-level controls. */}
+          <ThemeToggle variant="row" />
           <button
             type="button"
             className="btn btn-danger min-h-9 w-full px-3 py-1 text-sm"

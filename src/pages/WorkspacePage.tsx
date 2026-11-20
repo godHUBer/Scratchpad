@@ -22,6 +22,7 @@ import { humanizeError } from '../lib/errors';
 import type { CanvasItem, MediaAsset } from '../types';
 import { Icon } from '../components/ui/Icon';
 import { findFreeSlot, sizeForKind } from '../components/canvas/placement';
+import { SHAPE_SIZE, shapeLabel, type ShapeKind } from '../lib/shapes';
 import { MediaPreviewModal } from '../components/canvas/MediaPreviewModal';
 import { DeleteWorkspaceDialog } from '../components/teams/DeleteWorkspaceDialog';
 import { TrashPanel } from '../components/canvas/TrashPanel';
@@ -231,6 +232,53 @@ export function WorkspacePage() {
   const createTextAt = (position: { x: number; y: number }) => {
     if (!guardWrite()) return;
     setTextEditor({ item: null, position });
+  };
+
+  /**
+   * Drops a shape near the visible centre and selects it, so the user can drag
+   * or resize it straight away.
+   *
+   * Stored as `item_type: 'draw'` with a `shape` field: the item_type column has
+   * a CHECK constraint, so a new type would need a migration. See
+   * src/lib/shapes.ts for the full reasoning.
+   */
+  const insertShape = async (kind: ShapeKind) => {
+    if (!guardWrite()) return;
+    const { width, height } = SHAPE_SIZE;
+    const slot = nextSlot(width, height);
+    try {
+      const created = await canvas.createItem({
+        item_type: 'draw',
+        position_x: Math.round(slot.x),
+        position_y: Math.round(slot.y),
+        width,
+        height,
+        content: {
+          shape: kind,
+          color: brushColor,
+          strokeWidth: Math.max(3, Math.round(brushSize / 2)),
+          filled: false,
+        },
+      });
+      setSelectedIds([created.id]);
+      setLastCanvasAction({
+        label: 'insert-shape',
+        undo: () => canvas.deleteItem(created.id).then(() => undefined),
+        redo: async () => {
+          await canvas.createItem({
+            item_type: 'draw',
+            position_x: created.position_x,
+            position_y: created.position_y,
+            width: created.width,
+            height: created.height,
+            content: created.content,
+          });
+        },
+      });
+      toast.success(`${shapeLabel({ shape: kind }) ?? 'Shape'} added.`);
+    } catch (err) {
+      toast.error(humanizeError(err));
+    }
   };
 
   const handleTextSave = async (value: {
@@ -527,6 +575,7 @@ export function WorkspacePage() {
 
         <ContextToolbox
           tool={tool}
+          onInsertShape={(kind) => void insertShape(kind)}
           brushColor={brushColor}
           setBrushColor={setBrushColor}
           brushSize={brushSize}

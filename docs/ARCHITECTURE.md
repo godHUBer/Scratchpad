@@ -49,6 +49,30 @@ Already followed this shape before the convention was written down:
 - `src/pages/AdminPage.tsx` — the tables. 11 `useState` calls, all of which are
   pure view state (which tab, which dialog is open, the search box).
 
+## Theming
+
+Colours are indirect. `@theme inline` maps every utility (`bg-paper`,
+`text-ink`, `border-ink`, …) to `var(--c-*)`, and the `--c-*` values are defined
+twice: once for `:root` (light) and once for `[data-theme='dark']`. Adding a
+colour therefore means adding one variable in two places, never editing call
+sites.
+
+Three rules that are easy to get wrong:
+
+1. **`--color-ink-fixed` never changes.** It is the near-black used for text and
+   borders *on top of the accent colours* (mustard, coral, …). The accents stay
+   bright in both themes, so flipping those to follow `--c-ink` would put white
+   text on a yellow button. Use `ink-fixed` for anything sitting on an accent,
+   and `ink` for anything sitting on paper.
+2. **Canvas chrome must read colours through `useThemeColors()`.** Konva draws to
+   a canvas and cannot resolve `var()`, so a CSS variable in a `stroke` prop
+   silently fails. User content is the exception: a black brush stroke stays
+   black in dark mode because it is the user's drawing, not chrome.
+3. **The theme is applied before first paint.** `index.html` carries an inline
+   script that sets `data-theme` before the bundle loads. Without it every dark
+   mode user gets a white flash on each load. `ThemeProvider` re-applies the same
+   rule; both must be kept in step, and a test covers the provider's half.
+
 ## Where things go
 
 ```

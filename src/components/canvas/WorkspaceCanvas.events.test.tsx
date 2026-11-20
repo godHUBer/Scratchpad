@@ -4,6 +4,7 @@ import { cleanup, render } from '@testing-library/react';
 // vi.mock calls are hoisted above this import by Vitest, so the mocks below are
 // already in place when the module graph is built.
 import { WorkspaceCanvas } from './WorkspaceCanvas';
+import { ThemeProvider } from '../../contexts/ThemeContext';
 
 /*
  * Regression test for "the brush tool stopped working".
@@ -69,13 +70,18 @@ function makeApi(): import('./WorkspaceCanvas').CanvasApi {
   };
 }
 
-function renderCanvas() {
+function renderCanvas(
+  options: { api?: import('./WorkspaceCanvas').CanvasApi; tool?: 'brush' | 'eraser' | 'select' } = {},
+) {
   render(
-    <WorkspaceCanvas
-      api={makeApi()}
+    // The canvas reads its chrome colours from the theme, so it needs the
+    // provider even though these tests only assert event wiring.
+    <ThemeProvider>
+      <WorkspaceCanvas
+      api={options.api ?? makeApi()}
       bookmarks={{}}
       media={{}}
-      tool="brush"
+      tool={options.tool ?? 'brush'}
       setTool={noop}
       canWrite
       brushColor="#080808"
@@ -88,8 +94,9 @@ function renderCanvas() {
       onCreateText={noop}
       onError={noop}
       onUndoAvailable={noop}
-      onEraseNotice={noop}
-    />,
+        onEraseNotice={noop}
+      />
+    </ThemeProvider>,
   );
   return stageProps.props;
 }
@@ -145,5 +152,97 @@ describe('canvas Stage event wiring', () => {
     ];
     const missing = required.filter((name) => props[name] === undefined);
     expect(missing, `Stage is missing: ${missing.join(', ')}`).toEqual([]);
+  });
+
+  /*
+    Drag-to-erase.
+
+    The eraser used to fire only on mousedown, so it deleted whatever was under
+    the initial press and ignored the rest of the stroke. These assertions pin
+    the drag behaviour: the stage must consult the pointer position while moving,
+    not only on press.
+  */
+  it('erases every item the drag passes over, and each only once', () => {
+    /*
+      Drives the real handlers with a fake stage. The old implementation deleted
+      on mousedown only, so a drag across three items removed one; and a naive
+      drag implementation fires a second delete for an item the stroke
+      re-crosses, which errors against an id that is already gone.
+    */
+    const deleted: string[] = [];
+    const stage = {
+      getPointerPosition: () => ({ x: 10, y: 10 }),
+      // The item under the pointer, changed between moves to simulate a sweep.
+      getIntersection: () => hovered,
+    };
+    let hovered: { name: () => string; getParent: () => null } | null = null;
+
+    const props = renderCanvas({
+      tool: 'eraser',
+      api: {
+        ...makeApi(),
+        items: [
+          { id: 'a', item_type: 'draw', position_x: 0, position_y: 0, width: 10, height: 10, content: {} },
+          { id: 'b', item_type: 'draw', position_x: 0, position_y: 0, width: 10, height: 10, content: {} },
+        ] as never,
+        deleteItem: (id: string) => {
+          deleted.push(id);
+          return Promise.resolve();
+        },
+      },
+    });
+
+    // Point the stage ref at the fake so getIntersection is reachable.
+    (props.ref as (node: unknown) => void)(stage);
+
+    // Press on item "a".
+    hovered = { name: () => 'item-a', getParent: () => null };
+    (props.onMouseDown as (event: unknown) => void)({
+      target: { getStage: () => stage, name: () => 'item-a', getParent: () => null },
+      evt: { preventDefault: () => {}, shiftKey: false },
+    });
+
+    // Drag over "b", then back over "a" again.
+    hovered = { name: () => 'item-b', getParent: () => null };
+    (props.onMouseMove as () => void)();
+    hovered = { name: () => 'item-a', getParent: () => null };
+    (props.onMouseMove as () => void)();
+
+    expect(deleted).toEqual(['a', 'b']); // not ['a','b','a']
+  });
+
+  it('clears the drag state on mouse up, so the next stroke erases again', () => {
+    const deleted: string[] = [];
+    const stage = {
+      getPointerPosition: () => ({ x: 10, y: 10 }),
+      getIntersection: () => ({ name: () => 'item-a', getParent: () => null }),
+    };
+    const props = renderCanvas({
+      tool: 'eraser',
+      api: {
+        ...makeApi(),
+        items: [
+          { id: 'a', item_type: 'draw', position_x: 0, position_y: 0, width: 10, height: 10, content: {} },
+        ] as never,
+        deleteItem: (id: string) => {
+          deleted.push(id);
+          return Promise.resolve();
+        },
+      },
+    });
+    (props.ref as (node: unknown) => void)(stage);
+
+    const press = () =>
+      (props.onMouseDown as (event: unknown) => void)({
+        target: { getStage: () => stage, name: () => 'item-a', getParent: () => null },
+        evt: { preventDefault: () => {}, shiftKey: false },
+      });
+
+    press();
+    (props.onMouseUp as () => void)();
+    press();
+
+    // Two separate strokes on the same item: both delete.
+    expect(deleted).toEqual(['a', 'a']);
   });
 });

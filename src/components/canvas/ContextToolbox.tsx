@@ -6,6 +6,7 @@ import type { Role } from '../../types';
 import { hostnameOf, pluralize } from '../../lib/format';
 import { Icon } from '../ui/Icon';
 import { FontPicker } from './FontPicker';
+import { polygonPoints, SHAPES, type ShapeKind } from '../../lib/shapes';
 
 interface ContextToolboxProps {
   tool: Tool;
@@ -31,6 +32,8 @@ interface ContextToolboxProps {
   onLayer: (item: CanvasItem, direction: 'front' | 'back' | 'forward' | 'backward') => void;
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  /** Drops a common shape on the canvas. Shapes live under the brush. */
+  onInsertShape: (kind: ShapeKind) => void;
 }
 
 const SWATCHES = ['#080808', '#f7c948', '#ff8a80', '#7fd18b', '#8ec5ff', '#c9b6ff', '#ffffff'];
@@ -59,6 +62,7 @@ export function ContextToolbox(props: ContextToolboxProps) {
     onLayer,
     collapsed,
     onToggleCollapsed,
+    onInsertShape,
   } = props;
 
   if (collapsed) {
@@ -102,6 +106,7 @@ export function ContextToolbox(props: ContextToolboxProps) {
       {selected.length === 0 ? (
         <EmptyContext tool={tool} brushColor={brushColor} setBrushColor={setBrushColor} brushSize={brushSize}
           setBrushSize={setBrushSize} textSize={textSize} setTextSize={setTextSize} textColor={textColor}
+          onInsertShape={onInsertShape}
           setTextColor={setTextColor} canWrite={canWrite} />
       ) : selected.length === 1 ? (
         <SingleItem
@@ -154,6 +159,7 @@ function EmptyContext({
   textColor,
   setTextColor,
   canWrite,
+  onInsertShape,
 }: {
   tool: Tool;
   brushColor: string;
@@ -165,6 +171,7 @@ function EmptyContext({
   textColor: string;
   setTextColor: (value: string) => void;
   canWrite: boolean;
+  onInsertShape: (kind: ShapeKind) => void;
 }) {
   return (
     <div className="space-y-3 text-sm">
@@ -185,15 +192,34 @@ function EmptyContext({
           />
           <p className="label mt-2">Brush colour</p>
           <Swatches value={brushColor} onChange={setBrushColor} />
+
+          {/* Shapes sit with the brush: both create vector marks on the canvas. */}
+          <p className="label mt-3">Shapes</p>
+          <div className="grid grid-cols-3 gap-1.5">
+            {SHAPES.map((shape) => (
+              <button
+                key={shape.kind}
+                type="button"
+                onClick={() => onInsertShape(shape.kind)}
+                disabled={!canWrite}
+                title={`Add a ${shape.label.toLowerCase()}`}
+                aria-label={`Add a ${shape.label.toLowerCase()}`}
+                className="flex flex-col items-center gap-1 rounded-xl border-2 border-ink bg-paper px-1 py-1.5 text-[10px] font-bold hover:bg-cream disabled:opacity-40 pointer-coarse:py-2"
+              >
+                <ShapeGlyph kind={shape.kind} />
+                <span className="leading-none">{shape.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
       {tool === 'eraser' && (
         <div className="space-y-2">
-          <p className="text-sm font-extrabold">Click to erase</p>
+          <p className="text-sm font-extrabold">Drag to erase</p>
           <p className="text-xs text-ink-soft">
-            Click any drawing, text box or card to remove it. The whole object disappears — undo with
-            Ctrl/⌘+Z, or shift+Ctrl+Z to bring it back.
+            Click or drag across any drawing, text box or card to remove it — every object the stroke
+            passes over disappears. Undo with Ctrl/⌘+Z.
           </p>
         </div>
       )}
@@ -287,7 +313,7 @@ function SingleItem({
   return (
     <div className="space-y-2 text-sm">
       <div className="flex items-center justify-between gap-2">
-        <span className="chip bg-mustard">{typeLabel}</span>
+        <span className="chip chip-accent bg-mustard">{typeLabel}</span>
         <span className="text-[10px] font-bold text-ink-soft">v{item.version}</span>
       </div>
 
@@ -415,5 +441,46 @@ function Swatches({ value, onChange }: { value: string; onChange: (value: string
         className="h-7 w-8 cursor-pointer rounded border-2 border-ink bg-paper p-0 pointer-coarse:h-10 pointer-coarse:w-11"
       />
     </div>
+  );
+}
+
+/**
+ * A tiny SVG preview of each shape for the toolbox button.
+ *
+ * Drawn from the same geometry functions the canvas uses, so the preview cannot
+ * drift from what actually gets inserted. SVG rather than a Konva canvas here:
+ * these are 20 px icons and a second canvas per button would be wasteful.
+ */
+function ShapeGlyph({ kind }: { kind: ShapeKind }) {
+  const size = 22;
+  const w = size;
+  const h = size;
+  const stroke = { stroke: 'currentColor', strokeWidth: 2, fill: 'none', strokeLinejoin: 'round' as const, strokeLinecap: 'round' as const };
+
+  if (kind === 'ellipse') {
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
+        <ellipse cx={w / 2} cy={h / 2} rx={w / 2 - 1} ry={h / 2 - 3} {...stroke} />
+      </svg>
+    );
+  }
+
+  if (kind === 'arrow') {
+    // Built here rather than from arrowPoints: the icon needs a visible shaft
+    // and head at 22 px, which is a different drawing from the canvas arrow.
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
+        <path d={`M2 ${h / 2} H${w - 2} M${w - 7} ${h / 2 - 4} L${w - 2} ${h / 2} L${w - 7} ${h / 2 + 4}`} {...stroke} />
+      </svg>
+    );
+  }
+
+  const points = polygonPoints(kind, w - 2, h - 4)
+    .map(([x, y]) => `${x + 1},${y + 2}`)
+    .join(' ');
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
+      <polygon points={points} {...stroke} />
+    </svg>
   );
 }
