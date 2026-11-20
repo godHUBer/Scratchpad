@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { Icon } from './Icon';
 
 interface ModalProps {
   open: boolean;
@@ -88,7 +89,7 @@ export function Modal({ open, onClose, title, description, children, footer, siz
             onClick={() => !busy && onClose()}
             aria-label="Close dialog"
           >
-            ✕
+            <Icon name="close" size={18} />
           </button>
         </div>
         <div className="space-y-4">{children}</div>

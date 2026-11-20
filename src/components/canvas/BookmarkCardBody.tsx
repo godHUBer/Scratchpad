@@ -34,7 +34,7 @@ export function BookmarkCardBody({ bookmark }: { bookmark: Bookmark | null }) {
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
         >
-          Open ↗
+          Open
         </a>
       </div>
     </div>

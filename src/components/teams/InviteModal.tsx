@@ -89,7 +89,7 @@ export function InviteModal({ open, workspace, onClose }: InviteModalProps) {
               Invite someone else
             </button>
             <button type="button" className="btn btn-primary" onClick={copy}>
-              {copied ? 'Copied ✓' : 'Copy invitation link'}
+              {copied ? 'Copied' : 'Copy invitation link'}
             </button>
           </>
         ) : (

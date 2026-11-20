@@ -5,13 +5,14 @@ import { useWorkspaces } from '../contexts/WorkspaceContext';
 import { Avatar } from './ui/Avatar';
 import { roleLabel } from '../lib/permissions';
 import { CreateTeamModal } from './teams/CreateTeamModal';
+import { Icon, type IconName } from './ui/Icon';
 
-const ITEMS = [
-  { to: '/workspace', label: 'My Workspace', emoji: '🗂️' },
-  { to: '/teams', label: 'My Teams', emoji: '👥' },
-  { to: '/invitations', label: 'Invitations', emoji: '✉️' },
-  { to: '/bookmarks', label: 'Bookmarks', emoji: '🔖' },
-  { to: '/settings', label: 'Settings', emoji: '⚙️' },
+const ITEMS: Array<{ to: string; label: string; icon: IconName }> = [
+  { to: '/workspace', label: 'My Workspace', icon: 'home' },
+  { to: '/teams', label: 'My Teams', icon: 'users' },
+  { to: '/invitations', label: 'Invitations', icon: 'mail' },
+  { to: '/bookmarks', label: 'Bookmarks', icon: 'bookmark' },
+  { to: '/settings', label: 'Settings', icon: 'settings' },
 ];
 
 interface NavigationSidebarProps {
@@ -59,13 +60,11 @@ export function NavigationSidebar({ open, onClose, onOpenCreateTeam, onJoinPromp
       >
         <div className="flex items-center justify-between border-b-[3px] border-ink px-4 py-3">
           <div className="flex items-center gap-2">
-            <span className="text-xl" aria-hidden>
-              📒
-            </span>
+            <Icon name="bookmarkShelf" size={22} />
             <span className="text-lg font-black tracking-tight">Scratchpad</span>
           </div>
-          <button type="button" className="btn min-h-9 px-3 py-1" onClick={onClose} aria-label="Close menu">
-            ✕
+          <button type="button" className="btn min-h-9 w-9 px-0" onClick={onClose} aria-label="Close menu">
+            <Icon name="close" size={18} />
           </button>
         </div>
 
@@ -93,7 +92,7 @@ export function NavigationSidebar({ open, onClose, onOpenCreateTeam, onJoinPromp
                 }
               >
                 <span className="flex items-center gap-2">
-                  <span aria-hidden>{item.emoji}</span>
+                  <Icon name={item.icon} size={19} />
                   {item.label}
                 </span>
                 {item.to === '/invitations' && pendingCount > 0 ? (
@@ -118,9 +117,9 @@ export function NavigationSidebar({ open, onClose, onOpenCreateTeam, onJoinPromp
                       currentWorkspace?.id === w.id ? 'bg-cream' : ''
                     }`}
                   >
-                    <span className="truncate">
-                      <span aria-hidden>{w.type === 'personal' ? '🗂️ ' : '👥 '}</span>
-                      {w.name}
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <Icon name={w.type === 'personal' ? 'home' : 'users'} size={16} />
+                      <span className="truncate">{w.name}</span>
                     </span>
                     <span className="chip shrink-0">{roleLabel(w.myRole)}</span>
                   </button>
@@ -131,8 +130,9 @@ export function NavigationSidebar({ open, onClose, onOpenCreateTeam, onJoinPromp
               <button type="button" className="btn min-h-9 px-3 py-1 text-sm" onClick={onOpenCreateTeam}>
                 + Create a Team
               </button>
-              <button type="button" className="btn min-h-9 px-3 py-1 text-sm" onClick={onJoinPrompt}>
-                🔗 Join a Team
+              <button type="button" className="btn min-h-9 gap-1.5 px-3 py-1 text-sm" onClick={onJoinPrompt}>
+                <Icon name="link" size={16} />
+                Join a Team
               </button>
             </div>
           </div>

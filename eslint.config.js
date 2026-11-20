@@ -31,4 +31,9 @@ export default tseslint.config(
     files: ['vite.config.ts', 'vitest.config.ts', 'eslint.config.js'],
     languageOptions: { globals: { ...globals.node } },
   },
+  {
+    // Local QA harnesses: Node scripts that drive a real browser.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+  },
 );

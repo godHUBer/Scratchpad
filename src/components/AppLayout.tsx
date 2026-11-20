@@ -1,14 +1,25 @@
 import { useState, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, Outlet, useNavigate } from 'react-router-dom';
 import { useWorkspaces } from '../contexts/WorkspaceContext';
 import { useAuth } from '../contexts/AuthContext';
 import { NavigationSidebar } from './NavigationSidebar';
 import { CreateTeamModal } from './teams/CreateTeamModal';
 import { JoinTeamModal } from './teams/JoinTeamModal';
 import { useToast } from '../contexts/ToastContext';
+import { Icon } from './ui/Icon';
 import { humanizeError } from '../lib/errors';
 
-export function AppLayout({ children }: { children: ReactNode }) {
+/**
+ * Shell for every signed-in page: header, slide-over navigation and the routed
+ * page body.
+ *
+ * The page body comes from <Outlet />, NOT from a `children` prop. This element
+ * is used as a pathless layout route in App.tsx, so React Router renders the
+ * matched child route into the Outlet. Accepting `children` here (as an earlier
+ * version did, rendered with `{null}`) silently produced an empty <main> and
+ * made every page after sign-in — the canvas included — unreachable.
+ */
+export function AppLayout({ children }: { children?: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [joinOpen, setJoinOpen] = useState(false);
@@ -22,14 +33,13 @@ export function AppLayout({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b-[3px] border-ink bg-cream/95 px-3 py-2 backdrop-blur-[2px] sm:px-4">
         <div className="flex min-w-0 items-center gap-2">
           <Link to="/workspace" className="flex items-center gap-2 rounded-xl px-1 py-0.5 hover:bg-paper">
-            <span className="text-xl" aria-hidden>
-              📒
-            </span>
+            <Icon name="bookmarkShelf" size={22} />
             <span className="hidden text-lg font-black tracking-tight sm:inline">Scratchpad</span>
           </Link>
           {currentWorkspace ? (
-            <span className="chip max-w-[46vw] truncate bg-paper" title={currentWorkspace.name}>
-              {currentWorkspace.type === 'personal' ? '🗂️' : '👥'} {currentWorkspace.name}
+            <span className="chip max-w-[46vw] gap-1 bg-paper" title={currentWorkspace.name}>
+              <Icon name={currentWorkspace.type === 'personal' ? 'home' : 'users'} size={14} />
+              <span className="truncate">{currentWorkspace.name}</span>
             </span>
           ) : null}
         </div>
@@ -54,7 +64,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="flex-1">{children}</main>
+      <main className="flex-1">
+        <Outlet />
+        {children}
+      </main>
 
       <NavigationSidebar
         open={menuOpen}

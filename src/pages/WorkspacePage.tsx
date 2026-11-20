@@ -20,6 +20,7 @@ import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { canEdit, roleLabel, writeBlockedMessage } from '../lib/permissions';
 import { humanizeError } from '../lib/errors';
 import type { CanvasItem, MediaAsset } from '../types';
+import { Icon } from '../components/ui/Icon';
 
 type MediaModalKind = 'image' | 'audio' | 'video' | 'media_link';
 
@@ -341,7 +342,7 @@ export function WorkspacePage() {
     return (
       <div className="p-6">
         <EmptyState
-          emoji="🛠️"
+          icon="settings"
           title="Could not load your workspaces"
           action={
             <button type="button" className="btn btn-primary" onClick={() => void refresh()}>
@@ -358,7 +359,7 @@ export function WorkspacePage() {
   if (!workspace || !user) {
     return (
       <div className="p-6">
-        <EmptyState emoji="🗂️" title="No workspace selected">
+        <EmptyState icon="home" title="No workspace selected">
           Pick a workspace from the menu, or create a team to get started.
         </EmptyState>
       </div>
@@ -387,7 +388,7 @@ export function WorkspacePage() {
           onRetrySync={() => void canvas.reload()}
         />
 
-        <div className="absolute right-2 top-2 z-20 flex flex-col items-end gap-1.5">
+        <div className="absolute right-2 top-[7.5rem] z-20 flex flex-col items-end gap-1.5 sm:top-2">
           <MemberAvatars members={members} online={online.map((o) => o.user_id)} onOpen={() => setMembersOpen(true)} />
           {online.length > 1 ? (
             <span className="chip bg-mint">{online.length} online</span>
@@ -512,7 +513,7 @@ export function WorkspacePage() {
             className="absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-full border-[3px] border-ink bg-paper px-3 py-1 text-xs font-black hard-shadow-sm"
             onClick={() => window.dispatchEvent(new CustomEvent('scratchpad:undo'))}
           >
-            ↶ Undo available (Ctrl/⌘ Z)
+            <Icon name="undo" size={14} className="inline" /> Undo available (Ctrl/⌘ Z)
           </button>
         ) : null}
       </div>

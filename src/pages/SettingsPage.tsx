@@ -9,6 +9,7 @@ import { roleLabel } from '../lib/permissions';
 import { fullDate } from '../lib/format';
 import { humanizeError } from '../lib/errors';
 import { readAppConfig } from '../lib/config';
+import { Icon } from '../components/ui/Icon';
 
 export function SettingsPage() {
   const { user, profile, updateProfile, signOut } = useAuth();
@@ -104,7 +105,7 @@ export function SettingsPage() {
           {workspaces.map((workspace) => (
             <li key={workspace.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border-2 border-ink/30 bg-cream px-2.5 py-1.5">
               <span className="truncate text-sm font-bold">
-                {workspace.type === 'personal' ? '🗂️' : '👥'} {workspace.name}
+                <Icon name={workspace.type === 'personal' ? 'home' : 'users'} size={14} className="inline" /> {workspace.name}
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="chip">{roleLabel(workspace.myRole)}</span>

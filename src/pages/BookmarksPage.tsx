@@ -12,6 +12,7 @@ import { hostnameOf, relativeTime } from '../lib/format';
 import { humanizeError } from '../lib/errors';
 import { parseMediaUrl, normalizeUrlInput } from '../lib/drive';
 import type { Bookmark } from '../types';
+import { Icon } from '../components/ui/Icon';
 
 export function BookmarksPage() {
   const { currentWorkspace, currentRole, loading: workspaceLoading, setActiveWorkspace } = useWorkspaces();
@@ -155,7 +156,7 @@ export function BookmarksPage() {
         </div>
       ) : filtered.length === 0 ? (
         <EmptyState
-          emoji="🔖"
+          icon="bookmark"
           title={bookmarks.length === 0 ? 'No bookmarks yet' : 'Nothing matches that filter'}
           action={
             bookmarks.length === 0 && canWrite ? (
@@ -186,7 +187,7 @@ export function BookmarksPage() {
                     {bookmark.category ? <span className="chip shrink-0 bg-paper">{bookmark.category}</span> : null}
                   </div>
                   <p className="mt-1 truncate text-[11px] font-bold text-ink-soft">
-                    {isDrive ? '🎞️ Google Drive · ' : ''}
+                    {isDrive ? 'Google Drive · ' : ''}
                     {hostnameOf(bookmark.url)}
                   </p>
                   {bookmark.description ? (
@@ -202,7 +203,7 @@ export function BookmarksPage() {
                       rel="noreferrer noopener"
                       className="btn min-h-7 px-2 py-0.5 text-[11px]"
                     >
-                      Open ↗
+                      Open <Icon name="external" size={12} className="inline" />
                     </a>
                     <button
                       type="button"

@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react';
 import type { SyncState } from '../../hooks/useCanvasItems';
+import { Icon, type IconName } from '../ui/Icon';
 
 export type Tool = 'select' | 'pan' | 'text' | 'brush' | 'eraser';
 
 export interface ToolAction {
   id: string;
   label: string;
-  emoji: string;
+  icon: IconName;
   kind: 'tool' | 'action';
   disabled?: boolean;
   hint?: string;
@@ -28,12 +29,12 @@ interface FloatingToolbarProps {
   onRetrySync: () => void;
 }
 
-const TOOLS: Array<{ id: Tool; label: string; emoji: string }> = [
-  { id: 'select', label: 'Select', emoji: '🖱️' },
-  { id: 'text', label: 'Text', emoji: '🔠' },
-  { id: 'brush', label: 'Brush', emoji: '🖌️' },
-  { id: 'eraser', label: 'Eraser', emoji: '🧽' },
-  { id: 'pan', label: 'Pan', emoji: '✋' },
+const TOOLS: Array<{ id: Tool; label: string; icon: IconName }> = [
+  { id: 'select', label: 'Select', icon: 'select' },
+  { id: 'text', label: 'Text', icon: 'text' },
+  { id: 'brush', label: 'Brush', icon: 'brush' },
+  { id: 'eraser', label: 'Eraser', icon: 'eraser' },
+  { id: 'pan', label: 'Pan', icon: 'hand' },
 ];
 
 export function FloatingToolbar({
@@ -59,7 +60,7 @@ export function FloatingToolbar({
             <ToolButton
               key={t.id}
               label={t.label}
-              emoji={t.emoji}
+              icon={t.icon}
               active={tool === t.id}
               onClick={() => onTool(t.id)}
               ariaPressed={tool === t.id}
@@ -68,12 +69,12 @@ export function FloatingToolbar({
         </div>
         <Divider />
         <div className="flex items-center gap-1">
-          <ToolButton label="Add text" emoji="✍️" onClick={onText} disabled={disabledActions} />
-          <ToolButton label="Add image" emoji="🖼️" onClick={onImage} disabled={disabledActions} />
-          <ToolButton label="Add audio" emoji="🎧" onClick={onAudio} disabled={disabledActions} />
-          <ToolButton label="Add video" emoji="🎬" onClick={onVideo} disabled={disabledActions} />
-          <ToolButton label="Add bookmark" emoji="🔖" onClick={onBookmark} disabled={disabledActions} />
-          <ToolButton label="Add media link" emoji="🔗" onClick={onMediaLink} disabled={disabledActions} />
+          <ToolButton label="Add text" icon="text" onClick={onText} disabled={disabledActions} />
+          <ToolButton label="Add image" icon="image" onClick={onImage} disabled={disabledActions} />
+          <ToolButton label="Add audio" icon="audio" onClick={onAudio} disabled={disabledActions} />
+          <ToolButton label="Add video" icon="video" onClick={onVideo} disabled={disabledActions} />
+          <ToolButton label="Add bookmark" icon="bookmark" onClick={onBookmark} disabled={disabledActions} />
+          <ToolButton label="Add media link" icon="link" onClick={onMediaLink} disabled={disabledActions} />
         </div>
         <Divider />
         <SyncPill state={syncState} lastSavedAt={lastSavedAt} conflicts={conflictCount} onRetry={onRetrySync} />
@@ -84,14 +85,14 @@ export function FloatingToolbar({
 
 function ToolButton({
   label,
-  emoji,
+  icon,
   onClick,
   active,
   disabled,
   ariaPressed,
 }: {
   label: string;
-  emoji: string;
+  icon: IconName;
   onClick: () => void;
   active?: boolean;
   disabled?: boolean;
@@ -105,13 +106,13 @@ function ToolButton({
       aria-pressed={ariaPressed}
       aria-label={label}
       title={label}
-      className={`grid h-9 w-9 place-items-center rounded-xl border-2 text-base transition-colors sm:h-10 sm:w-10 ${
+      className={`grid h-9 w-9 place-items-center rounded-xl border-2 text-ink transition-colors sm:h-10 sm:w-10 ${
         active
           ? 'border-ink bg-mustard shadow-[2px_2px_0_0_#080808]'
           : 'border-transparent hover:border-ink hover:bg-cream'
       } disabled:opacity-40`}
     >
-      <span aria-hidden>{emoji}</span>
+      <Icon name={icon} />
     </button>
   );
 }
@@ -165,7 +166,7 @@ export function SyncPill({
       </button>
       {conflicts > 0 ? (
         <span className="chip min-h-8 bg-lilac" title="Remote edits were merged into your canvas">
-          ↗ {conflicts}
+          {conflicts}
         </span>
       ) : null}
     </div>

@@ -88,7 +88,7 @@ export function TeamsPage() {
 
       {teammates.length === 0 ? (
         <EmptyState
-          emoji="👥"
+          icon="users"
           title="No teams yet"
           action={
             <button type="button" className="btn btn-primary" onClick={() => setCreateOpen(true)}>
@@ -155,7 +155,7 @@ export function TeamsPage() {
                 }}
               />
             ) : (
-              <EmptyState emoji="👈" title="Pick a team" compact>
+              <EmptyState icon="users" title="Pick a team" compact>
                 Select a team on the left to see its members, roles and invitations.
               </EmptyState>
             )}

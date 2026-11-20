@@ -5,7 +5,7 @@ export function NotFoundPage() {
   return (
     <div className="mx-auto max-w-lg p-6">
       <EmptyState
-        emoji="🧭"
+        icon="link"
         title="That page is not on the map"
         action={
           <>

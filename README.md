@@ -8,10 +8,9 @@ An infinite whiteboard, shared notebook, bookmark shelf and creative workspace �
 - **Teams**: owners/editors/viewers, invitations (email-bound or shareable links), member management, ownership transfer — all enforced by Postgres RLS and RPCs.
 - **Collaboration**: Supabase Realtime for objects, presence avatars, version-checked writes with conflict reconciliation.
 
-**Deploy target:** `https://godhuber.github.io/Scratchpad/` — *not live yet.* The repository owner must
-complete section 4.1 (install the workflows) and 4.2 (enable Pages). There is no public deployment to
-try until those two one-time steps are done; the app is otherwise complete and runs locally with
-`npm run dev`.
+**Deploy target:** `https://godhuber.github.io/Scratchpad/`. The built bundle is already committed to
+the `gh-pages` branch; Pages still has to be pointed at it (Settings → Pages → Branch `gh-pages`) or
+switched to GitHub Actions — see section 4.
 
 ---
 
@@ -144,34 +143,97 @@ Enabled by default and needs no extra configuration. On the free tier Supabase s
 
 ## 4. Deploying to GitHub Pages
 
-### 4.1 Install the workflows first (one extra step)
+Pick **one** of the two paths below. Path A needs no workflow permissions; path B is the CI/CD setup
+that builds and verifies on every push to `main`.
 
-The two YAML files ship in `deployment/workflows/` because the automation token used to scaffold
-this repository is **not allowed to push `.github/workflows/**`** (GitHub returns `403: refusing to
-allow a GitHub App to create or update workflow … without 'workflows' permission`). Nothing else is
-missing — they are complete, tested workflow definitions.
+### 4.0 Why there are two paths
 
-Either copy them in by hand:
+The automation token used to scaffold this repository **cannot push `.github/workflows/**`**
+(GitHub returns `403: refusing to allow a GitHub App to create or update workflow … without
+'workflows' permission`) and **cannot change Pages settings** (`403`). Everything else is complete:
+the workflow definitions are tested and stored in `deployment/workflows/`.
+
+Two important consequences:
+
+- Pages in **"Deploy from a branch"** mode runs **Jekyll**, which does not run Vite. Pointing it at
+  `main` publishes raw source and the site is blank. Pointing it at a branch that contains the
+  **built** files works fine — that is path A.
+- Jekyll skips files and directories whose names start with `_` or `.`. `.nojekyll` is committed on
+  `gh-pages` so Vite assets are served as-is.
+
+### 4.1 Path A — publish the prebuilt bundle (no Actions needed)
+
+`npm run build` output is committed to the orphan branch **`gh-pages`** and verified locally with a
+real browser (all pages render, no console errors). To publish it:
+
+1. Repository → **Settings → Pages**.
+2. **Source: Deploy from a branch**.
+3. **Branch: `gh-pages`**, folder **`/ (root)`** → Save.
+4. Wait for the "pages build and deployment" run to finish, then open
+   <https://godhuber.github.io/Scratchpad/>.
+
+To refresh it after changing the app:
 
 ```bash
-./scripts/install-workflows.sh   # copies both files, prints the git commands
+VITE_BASE_PATH=/Scratchpad/ npm run build
+npx gh-pages -d dist --nojekyll   # or copy dist/ onto the gh-pages branch by hand
 ```
 
-or create the files in the GitHub web editor by pasting the contents of
-`deployment/workflows/ci.yml` and `deployment/workflows/deploy.yml`. Then commit, push, and merge
-into `main` from an account (or token) that has the `workflows` permission.
+`gh-pages` is a **build artifact**. Never edit it by hand; the source of truth is `main`.
 
-### 4.2 Enable Pages
+### 4.2 Path B — build and deploy with GitHub Actions (recommended long term)
 
-1. Push to `main` (workflow files now in `.github/workflows/`).
-2. Repository → **Settings → Pages → Source: GitHub Actions** (one time).
-3. The workflow builds with `VITE_BASE_PATH=/<repo>/`, verifies lint/typecheck/tests, and deploys `dist/`.
+1. Install the workflows that ship outside git:
 
-Optional: **Settings → Secrets and variables → Actions → Variables** → add `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. They override the committed `.env.production` defaults (which already contain a working publishable key, so deployment succeeds without extra setup).
+   ```bash
+   ./scripts/install-workflows.sh   # copies deployment/workflows/*.yml into .github/workflows/
+   ```
 
-Because the app uses **HashRouter**, deep links like `…/Scratchpad/#/invite/<token>` work on Pages without server rewrites, and OAuth redirects return to the app root and then continue to the remembered route.
+   (or paste `deployment/workflows/ci.yml` and `deployment/workflows/deploy.yml` in the GitHub web
+   editor). Commit and merge into `main` from an account with the `workflows` permission.
+2. **Settings → Pages → Source: GitHub Actions**.
+3. Push to `main` (or Actions → *Deploy to GitHub Pages* → Run workflow).
+
+The workflow runs lint, typecheck and tests, builds with `VITE_BASE_PATH=/<repo>/`, **fails if the
+Supabase URL is not baked into the bundle**, then deploys `dist/`.
+
+Repository Variables (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`) are **optional**. When
+unset, the values committed in `.env.production` are used; the workflow only overrides them when the
+variable actually has a value, so an empty variable can never blank out a working configuration.
+
+Because the app uses **HashRouter**, deep links like `…/Scratchpad/#/invite/<token>` work on Pages
+without server rewrites, and OAuth redirects return to the app root and then continue to the
+remembered route.
 
 ---
+
+### 4.3 Symptom: the site loads but the screen is blank
+
+**This is the branch-mode trap.** If `Settings → Pages` is set to **Deploy from a branch**
+(`main` / `/`), GitHub publishes your *source tree* through Jekyll. The live `index.html` then
+contains `<script type="module" src="/src/main.tsx">`, which never exists on Pages, so the browser
+loads nothing and you get a blank cream page.
+
+Check what mode you are in:
+
+```bash
+gh api repos/<owner>/<repo>/pages --jq '.build_type, .source.branch, .source.path'
+```
+
+- `"legacy"` + a branch → **wrong.** The Vite build in `dist/` is not used at all.
+- `"workflow"` → correct; the Actions run supplies the built artifact.
+
+Fix — either publish the prebuilt artifact (4.1: source = branch `gh-pages`), or install the
+workflow and switch the source to **GitHub Actions** (4.2).
+
+If Pages is in "Deploy from a branch" mode pointed at `main`, the page now shows a panel saying
+**"The app bundle did not load"** instead of a blank screen, because the raw `index.html` includes a
+tiny inline diagnostic that runs even when the module 404s.
+
+If the page is blank *after* switching to Actions mode, open DevTools → Console/Network. The app now
+shows an explicit panel instead of a white screen for (a) an unbuilt page being served and (b) a
+render-time crash, and the workflow fails the build if `VITE_SUPABASE_URL` is not baked into the
+bundle.
 
 ## 5. How the Google Drive integration works (and its limits)
 
