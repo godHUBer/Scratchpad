@@ -598,6 +598,8 @@ export function WorkspaceCanvas({
           // Two fingers mean pinch/pan; one finger behaves exactly as before.
           if (!onTouchStartGesture(event)) onMouseDown(event);
         }}
+        onMouseMove={onMouseMove}
+        onMouseUp={() => void onMouseUp()}
         onTouchMove={(event) => {
           if (!onTouchMoveGesture(event)) onMouseMove();
         }}
