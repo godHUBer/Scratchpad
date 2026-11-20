@@ -66,6 +66,12 @@ src/
   DOM, no mocks and no async.
 - A test that cannot fail is worse than no test. When adding a regression test,
   reintroduce the bug once and confirm the test goes red.
+- **Mocking a component means its `vi.mock` replaces the module, so the props it
+  receives can be asserted directly.** That is how
+  `WorkspaceCanvas.events.test.tsx` pins the Konva Stage wiring. Use it for any
+  third-party component whose *integration* is the fragile part: the Konva Stage
+  silently lost two mouse handlers in a refactor, and because the tool still
+  worked under touch, nothing surfaced it.
 - Component tests needing a DOM start with `// @vitest-environment jsdom`.
 
 ## Non-React code
