@@ -27,7 +27,9 @@ src/
   integrations/      Supabase client (PKCE)
   styles/            Tailwind theme + paper design system
 supabase/migrations/ SQL schema, functions, RLS, realtime, hardening (applied in order)
-deployment/workflows/ ci.yml + deploy.yml (source of truth; see 4.1 for why they are not in .github/)
+supabase/tests/     real-PostgreSQL suite: migrations + RPC assertions (see 6b)
+deployment/workflows/ ci.yml + deploy.yml (source of truth; installed into .github/ by 4.2)
+.github/workflows/  deploy.yml only — the token cannot push workflow files
 scripts/             install-workflows.sh helper
 plan.md              architecture plan and review corrections
 ```
@@ -98,6 +100,9 @@ Open each file in order and run it:
 | `…_realtime.sql` | publication, replica identity, private presence policy |
 | `…_hardening.sql` | definer hygiene fixes from the security review |
 | `…_accept_addressed.sql` | accepting an email-bound invite from the Invitations page |
+| `…_retention_and_deletion.sql` | 60 → 90 → 100 day cleanup sweep, media deletion bookkeeping |
+| `…_team_invite_links.sql` | `get_or_create_team_invite_link` (reusable join links, hashed tokens) |
+| `…_admin_console.sql` | admin key/sessions/audit tables, `heartbeat()`, the `admin_*` RPCs |
 
 ### 3.3 Auth redirects
 
@@ -197,9 +202,25 @@ that builds and verifies on every push to `main`.
 ### 4.0 Why there are two paths
 
 The automation token used to scaffold this repository **cannot push `.github/workflows/**`**
-(GitHub returns `403: refusing to allow a GitHub App to create or update workflow … without
-'workflows' permission`) and **cannot change Pages settings** (`403`). Everything else is complete:
-the workflow definitions are tested and stored in `deployment/workflows/`.
+(`403: refusing to allow a GitHub App to create or update workflow … without 'workflows'
+permission`). That is still true — attempting it from automation fails, verified. So the
+workflow definitions live in `deployment/workflows/` and are installed by hand.
+
+| Workflow | Triggers | Does |
+|---|---|---|
+| `ci.yml` | every PR to `main`, pushes to `main`/`arena/**`, manual | lint, typecheck, unit tests, production build, **and the database suite** |
+| `deploy.yml` | pushes to `main`, manual | builds and publishes to Pages |
+
+**CI is not running on pull requests today.** `gh run list` shows deploy runs and no
+CI runs at all; the workflow name 404s. `ci.yml` exists only in `deployment/workflows/`.
+To turn it on, follow §4.2 step 1 — one paste in the GitHub web editor from an account
+with `workflows` permission — and PRs will get lint, typecheck, unit tests, a build and
+the SQL suite automatically.
+
+`deploy.yml` *is* installed, which is why `main` keeps deploying — but note that its
+checked-in copy at `.github/workflows/deploy.yml` **cannot be edited from automation**
+either (same `workflows` permission). Fixes to it live in `deployment/workflows/deploy.yml`
+and take effect after §4.2 step 1 is run once.
 
 Two important consequences:
 
@@ -220,6 +241,10 @@ real browser (all pages render, no console errors). To publish it:
 4. Wait for the "pages build and deployment" run to finish, then open
    <https://godhuber.github.io/Scratchpad/>.
 
+> **Note:** Pages currently runs in **GitHub Actions** mode (`build_type: workflow`), so
+> `gh-pages` is *not* what visitors see. It is a stale snapshot from an earlier date and
+> should not be treated as the deployed site.
+
 To refresh it after changing the app:
 
 ```bash
@@ -231,18 +256,20 @@ npx gh-pages -d dist --nojekyll   # or copy dist/ onto the gh-pages branch by ha
 
 ### 4.2 Path B — build and deploy with GitHub Actions (recommended long term)
 
-1. Install the workflows that ship outside git:
+1. Install the workflows from `deployment/workflows/` into `.github/workflows/`. This step is
+   required, not optional — PRs get no automated checks until it is done:
 
    ```bash
    ./scripts/install-workflows.sh   # copies deployment/workflows/*.yml into .github/workflows/
    ```
 
-   (or paste `deployment/workflows/ci.yml` and `deployment/workflows/deploy.yml` in the GitHub web
-   editor). Commit and merge into `main` from an account with the `workflows` permission.
+   (or paste `deployment/workflows/ci.yml` into the GitHub web editor and commit from an
+   account with the `workflows` permission).
 2. **Settings → Pages → Source: GitHub Actions**.
 3. Push to `main` (or Actions → *Deploy to GitHub Pages* → Run workflow).
 
-The workflow runs lint, typecheck and tests, builds with `VITE_BASE_PATH=/<repo>/`, **fails if the
+The workflow runs lint, typecheck, unit tests, the database suite, builds with
+`VITE_BASE_PATH=/<repo>/`, **fails if the
 Supabase URL is not baked into the bundle**, then deploys `dist/`.
 
 Repository Variables (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`) are **optional**. When
@@ -467,6 +494,47 @@ Two verification passes were executed against the live project (`lkxygnbvkdlwacb
    | Final state | 2 members, invitation `accepted` with `accepted_by`/`accepted_at` |
 
    Probe rows were deleted afterwards (verified: 0 users, 0 workspaces, 0 invitations left).
+
+## 6b. Database tests: the migrations actually run
+
+The app's unit tests never touch a database, and a migration can be valid SQL
+while creating a function that raises the first time it is called. That is not
+hypothetical: `admin_list_users` shipped selecting `v.derived_seen` with no `v`
+in its FROM clause. Every parser accepted it; every call failed.
+
+`supabase/tests/` runs the real thing:
+
+```bash
+python3 -m pip install --break-system-packages pgserver
+python3 supabase/tests/run_sql_tests.py
+```
+
+It boots an embedded PostgreSQL, installs `support/00_supabase_shim.sql` (a
+stand-in for the Supabase-managed `auth.users`/`sessions`/`identities`,
+`auth.uid()`, `realtime.messages` and `realtime.topic()`), applies **all twelve
+migrations**, then executes every file in `tests/sql/`, failing on any error.
+
+Three details make it trustworthy, each of which was silently hiding failures:
+
+1. **`ON_ERROR_STOP`.** `psql` read from stdin does not stop on error and still
+   exits 0, so a naive runner reports success for a broken migration. The
+   runner drives `psql` with `-v ON_ERROR_STOP=1`.
+2. **pgcrypto.** `init_schema.sql` opens with `create extension if not exists
+   pgcrypto`, which a bare PostgreSQL build cannot provide — so migrations 0002
+   onward never ran. The runner installs a contract-compatible stand-in named
+   `pgcrypto` so the migration text stays untouched. It is **not** bcrypt.
+3. **It is checked.** Deleting the `cross join lateral` block again makes the
+   run fail with `missing FROM-clause entry for table "v"` and exit 1.
+
+`tests/sql/10_admin_console.sql` calls every admin RPC: wrong key rejected with
+`bad_key`, a 64-character token, all three list functions, an unknown session
+rejected, `heartbeat()` upserting a missing profile, and no client role able to
+read the admin tables or rotate the key.
+
+The `database` job in `deployment/workflows/ci.yml` runs this on every pull request —
+**once CI is installed** (see §4.2 step 1; it is not installed yet).
+
+---
 
 ## 6a. Admin console (server-side key)
 

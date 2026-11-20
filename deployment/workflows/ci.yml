@@ -43,3 +43,21 @@ jobs:
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+
+  database:
+    # Apply every migration to a real PostgreSQL and call the RPCs. The app's
+    # own tests never touch a database, so this is the only thing that would
+    # have caught admin_list_users selecting a column from a missing FROM clause.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install the embedded PostgreSQL runner
+        run: python -m pip install pgserver
+
+      - name: Migrations and RPC assertions
+        run: python supabase/tests/run_sql_tests.py
