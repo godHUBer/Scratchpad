@@ -162,6 +162,19 @@ export interface Database {
       rename_workspace: { Args: { p_workspace_id: string; p_name: string; p_description?: string | null }; Returns: undefined };
       delete_team: { Args: { p_workspace_id: string }; Returns: undefined };
       delete_workspace: { Args: { p_workspace_id: string }; Returns: undefined };
+      reissue_invitation_token: {
+        Args: { p_invitation_id: string };
+        Returns: Array<{ token: string; expires_at: string }>;
+      };
+      get_or_create_team_invite_link: {
+        Args: { p_workspace_id: string; p_role?: string; p_rotate?: boolean };
+        Returns: Array<{
+          invitation_id: string;
+          token: string;
+          expires_at: string;
+          role_offered: string;
+        }>;
+      };
       get_retention_policy: {
         Args: Record<string, never>;
         Returns: {

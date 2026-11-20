@@ -50,6 +50,14 @@ interface WorkspaceContextValue {
     email?: string | null;
     expiresInDays?: number;
   }) => Promise<{ token: string; expiresAt: string; invitationId: string }>;
+  /** Mint (or rotate) the shareable join link for a team. Returns a live token. */
+  getTeamInviteLink: (
+    workspaceId: string,
+    role?: 'editor' | 'viewer',
+    rotate?: boolean,
+  ) => Promise<{ token: string; expiresAt: string; invitationId: string }>;
+  /** Rotate one pending invitation's token; the previous link stops working. */
+  reissueInvitation: (invitationId: string) => Promise<{ token: string; expiresAt: string }>;
   previewInvitation: (token: string) => Promise<InvitationPreview | null>;
   acceptInvitation: (token: string) => Promise<string>;
   acceptAddressedInvitation: (id: string) => Promise<string>;
@@ -316,6 +324,38 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const getTeamInviteLink = useCallback(
+    async (workspaceId: string, role: 'editor' | 'viewer' = 'editor', rotate = false) => {
+      const { data, error: rpcError } = await supabase.rpc('get_or_create_team_invite_link', {
+        p_workspace_id: workspaceId,
+        p_role: role,
+        p_rotate: rotate,
+      });
+      if (rpcError) throw new Error(humanizeError(rpcError));
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row?.token) throw new Error('Could not create a join link for this team.');
+      await loadInvitations();
+      return { token: row.token, expiresAt: row.expires_at, invitationId: row.invitation_id };
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
+  const reissueInvitation = useCallback(
+    async (invitationId: string) => {
+      const { data, error: rpcError } = await supabase.rpc('reissue_invitation_token', {
+        p_invitation_id: invitationId,
+      });
+      if (rpcError) throw new Error(humanizeError(rpcError));
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!row?.token) throw new Error('Could not re-issue that invitation link.');
+      await loadInvitations();
+      return { token: row.token, expiresAt: row.expires_at };
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
   const previewInvitation = useCallback(async (token: string) => {
     const { data, error: rpcError } = await supabase.rpc('get_invitation_preview', { p_token: token });
     if (rpcError) throw new Error(humanizeError(rpcError));
@@ -420,6 +460,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       transferOwnership,
       leaveWorkspace,
       createInvitation,
+      getTeamInviteLink,
+      reissueInvitation,
       previewInvitation,
       acceptInvitation,
       acceptAddressedInvitation,
@@ -448,6 +490,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       transferOwnership,
       leaveWorkspace,
       createInvitation,
+      getTeamInviteLink,
+      reissueInvitation,
       previewInvitation,
       acceptInvitation,
       acceptAddressedInvitation,

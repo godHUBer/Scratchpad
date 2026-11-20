@@ -363,6 +363,36 @@ Design choices worth knowing:
 
 ---
 
+## 5c. Teams: roles, join links and disbanding
+
+Everything about a team funnels through `/teams/:workspaceId`. Selecting a team
+is a URL change, so the page is linkable and the back button works.
+
+**Roles** are `owner` / `editor` / `viewer`, and the UI never pretends otherwise:
+the owner sets roles from a dropdown, editors can invite and manage links, viewers
+get read-only. Every one of those rules is also enforced in SQL — the buttons
+merely avoid offering an action that would fail.
+
+**Join links** are deliberately ephemeral, which is the part that surprised
+people. The database stores only `token_hash`, so a raw token exists exactly once
+and a link cannot be displayed after the fact. Two functions make that workable:
+
+| Need | Function | Behaviour |
+|---|---|---|
+| "show me the link again" | `get_or_create_team_invite_link` | mints a new token for the team's pending shareable invite and returns it |
+| "re-share / invalidate that invite" | `reissue_invitation_token` | rotates one invitation's secret; the previous link stops working |
+
+Because the raw token is never stored, asking for the link again **replaces** it.
+The UI says this next to the field rather than quietly invalidating a link
+someone already sent.
+
+**Disbanding** is owner-only, lives on the team card as well as in the detail
+panel, and the confirm dialog requires typing the team name — the action deletes
+every member's canvas items, bookmarks and media links at once, and there is no
+undo. Editors and viewers get **Leave team** instead.
+
+---
+
 ## 6. Security model
 
 - All writes go through `SECURITY DEFINER` RPCs with pinned `search_path` and explicit `auth.uid()` checks. Clients have **no INSERT/UPDATE/DELETE grants** on any table — RLS cannot be bypassed by calling PostgREST directly.
@@ -436,6 +466,12 @@ Things that can only be verified in a real browser with real accounts:
 - [ ] Settings → Your workspaces has **Delete** for a workspace you own (personal *and* team).
 
 **Teams & invitations**
+- [ ] Create **two** teams; click between their cards and confirm the detail panel follows each time.
+- [ ] Reload `/teams/<id>` directly — the right team opens (the page is URL-driven).
+- [ ] Team card → gear menu → Disband team is disabled until you type the team name.
+- [ ] Join link: create one, open it in a private window signed in as another account, confirm the preview shows the team and the offered role.
+- [ ] Ask for a fresh link and confirm the previous one no longer opens the team.
+- [ ] Change a member's role from the dropdown; that account's controls change after reload.
 - [ ] Create team from the hamburger menu → opens the new team's canvas, you are Owner.
 - [ ] Invite by link with role Editor; accept in a second browser; realtime sync works.
 - [ ] Email-bound invitation is hidden from other accounts.
@@ -469,6 +505,8 @@ Things that can only be verified in a real browser with real accounts:
 | `42501` / permission errors | your role forbids it | ask an owner for editor access |
 | Nothing syncs between browsers | Realtime publication missing | rerun `…_realtime.sql` |
 | `cannot add 'presence' callbacks … after 'subscribe()'` after switching tabs | fixed in `usePresence`: the channel depended on profile fields, and token refreshes on tab focus rebuilt it mid-join | update to the latest build; the hook now keys the channel on `(workspaceId, user.id)` only and awaits teardown before re-subscribing |
+| A second team cannot be opened; the panel stays on "Pick a team" | the route is `/teams/:workspaceId` but the page read `useParams().teamId`, so the selection was always undefined | fixed in `TeamsPage`; pinned by `TeamsPage.test.tsx` (5 of its 7 tests fail if the param name regresses) |
+| No join link on My teams | the token is hashed and returned once, so the UI could only show a link inside the dialog that created it | `InviteLinkPanel` + migration 0011: `get_or_create_team_invite_link` mints a fresh token on demand |
 | New cards all stack in one place | placement used `window.innerWidth` and ignored panning/zoom | fixed: new cards spiral to a free slot near the visible centre |
 | Image card is an empty white box | the DOM overlay returned `null` for images while the shell painted an opaque background over the Konva bitmap | fixed: images render a real `<img>`; the shell is transparent for image cards |
 | Drive audio is a black rectangle | `download?export=download` returns an attachment, so the player always failed, then the iframe covered the card | fixed: Drive audio goes straight to the preview iframe on a cream background with its file name and an Open link |

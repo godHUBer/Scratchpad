@@ -1,26 +1,30 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
 import { useWorkspaces } from '../contexts/WorkspaceContext';
 import { useToast } from '../contexts/ToastContext';
 import { CreateTeamModal } from '../components/teams/CreateTeamModal';
 import { InviteModal } from '../components/teams/InviteModal';
 import { MemberListModal } from '../components/teams/MemberListModal';
+import { InviteLinkPanel } from '../components/teams/InviteLinkPanel';
 import { Avatar } from '../components/ui/Avatar';
+import { Icon } from '../components/ui/Icon';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Modal } from '../components/ui/Modal';
 import { PageLoader } from '../components/ui/Spinner';
-import { relativeTime } from '../lib/format';
+import { fullDate, relativeTime } from '../lib/format';
 import { humanizeError } from '../lib/errors';
 import { roleDescription, roleLabel } from '../lib/permissions';
-import type { WorkspaceWithMembership } from '../types';
+import { invitationUrl } from '../integrations/supabase/client';
+import type { Invitation, MemberWithProfile, Role, WorkspaceWithMembership } from '../types';
 
 export function TeamsPage() {
-  const { teamId } = useParams();
+  // The route is /teams/:workspaceId (App.tsx). This used to read `teamId`,
+  // which is always undefined, so the detail panel never left "Pick a team" and
+  // clicking a second team looked like a dead link.
+  const { workspaceId: teamId } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
-  const { user } = useAuth();
   const {
     workspaces,
     loading,
@@ -33,6 +37,8 @@ export function TeamsPage() {
     sentInvitations,
     loadInvitations,
     respondToInvitation,
+    reissueInvitation,
+    refresh,
   } = useWorkspaces();
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -42,6 +48,10 @@ export function TeamsPage() {
   const [deleteFor, setDeleteFor] = useState<WorkspaceWithMembership | null>(null);
   const [leaveFor, setLeaveFor] = useState<WorkspaceWithMembership | null>(null);
   const [busy, setBusy] = useState(false);
+  // Which team's card menu is open on the left. Only one at a time.
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  // Re-issued link shown inline in the invitation rows.
+  const [reissued, setReissued] = useState<{ id: string; url: string; expiresAt: string } | null>(null);
 
   const teammates = useMemo(() => workspaces.filter((w) => w.type === 'team'), [workspaces]);
   const selected = useMemo(
@@ -52,6 +62,16 @@ export function TeamsPage() {
   useEffect(() => {
     void loadInvitations();
   }, [loadInvitations]);
+
+  // Landing on /teams with no team in the URL used to render the dead
+  // "Pick a team" panel even when teams existed. Select the first one so the
+  // page is useful on arrival; the URL still drives everything after that.
+  useEffect(() => {
+    const first = teammates[0];
+    if (!teamId && first) {
+      navigate(`/teams/${first.id}`, { replace: true });
+    }
+  }, [teamId, teammates, navigate]);
 
   useEffect(() => {
     if (selected) void loadMembers(selected.id);
@@ -101,58 +121,111 @@ export function TeamsPage() {
       ) : (
         <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
           <ul className="space-y-2">
-            {teammates.map((team) => (
-              <li key={team.id}>
-                <button
-                  type="button"
-                  onClick={() => navigate(`/teams/${team.id}`)}
-                  className={`paper-flat relative w-full p-3 text-left transition-transform hover:-translate-y-0.5 ${
-                    selected?.id === team.id ? 'bg-mustard/40' : ''
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-base font-extrabold">{team.name}</p>
-                      <p className="line-clamp-2 text-xs text-ink-soft">
-                        {team.description || 'No description yet.'}
-                      </p>
+            {teammates.map((team) => {
+              const isManager = team.myRole === 'owner' || team.myRole === 'editor';
+              const isActive = selected?.id === team.id;
+              return (
+                <li key={team.id} className="relative">
+                  <div
+                    className={`paper-flat p-3 transition-transform ${
+                      isActive ? 'bg-mustard/40' : ''
+                    }`}
+                  >
+                    {/* Selecting and acting are separate controls. Nesting the
+                        action buttons inside the select button would be invalid
+                        HTML and would make keyboard navigation ambiguous. */}
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/teams/${team.id}`)}
+                      className="block w-full text-left"
+                      aria-current={isActive ? 'true' : undefined}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-base font-extrabold">{team.name}</p>
+                          <p className="line-clamp-2 text-xs text-ink-soft">
+                            {team.description || 'No description yet.'}
+                          </p>
+                        </div>
+                        <span className="chip shrink-0">{roleLabel(team.myRole)}</span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-bold text-ink-soft">
+                        <span className="chip">
+                          {team.memberCount ?? 1} member{(team.memberCount ?? 1) === 1 ? '' : 's'}
+                        </span>
+                        <span>Created {relativeTime(team.created_at)}</span>
+                      </div>
+                    </button>
+
+                    <div className="absolute bottom-2 right-2">
+                      <TeamCardMenu
+                        team={team}
+                        open={menuFor === team.id}
+                        canManage={isManager}
+                        onToggle={() => setMenuFor(menuFor === team.id ? null : team.id)}
+                        onClose={() => setMenuFor(null)}
+                        onInvite={() => {
+                          setMenuFor(null);
+                          setInviteFor(team);
+                        }}
+                        onMembers={() => {
+                          setMenuFor(null);
+                          // Select the team first: MemberListModal reads the
+                          // *active* workspace's members from the context.
+                          navigate(`/teams/${team.id}`);
+                          setMembersFor(team);
+                        }}
+                        onOpen={() => {
+                          setMenuFor(null);
+                          setActiveWorkspace(team.id);
+                          navigate(`/workspace/${team.id}`);
+                        }}
+                        onDelete={() => {
+                          setMenuFor(null);
+                          setDeleteFor(team);
+                        }}
+                      />
                     </div>
-                    <span className="chip shrink-0">{roleLabel(team.myRole)}</span>
                   </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-bold text-ink-soft">
-                    <span className="chip">{team.memberCount ?? 1} member{(team.memberCount ?? 1) === 1 ? '' : 's'}</span>
-                    <span>Created {relativeTime(team.created_at)}</span>
-                  </div>
-                </button>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
 
           <section className="paper-flat p-4">
             {selected ? (
               <TeamDetail
                 team={selected}
-                isOwner={selected.myRole === 'owner'}
-                isMeOwner={selected.owner_id === user?.id}
                 members={members}
                 sentInvitations={sentInvitations.filter((i) => i.workspace_id === selected.id)}
                 onOpen={() => {
                   setActiveWorkspace(selected.id);
                   navigate(`/workspace/${selected.id}`);
                 }}
-                onInvite={() => setInviteFor(selected)}
-                onMembers={() => setMembersFor(selected)}
-                onRename={() => setRenameFor(selected)}
+                onInvite={() => setMembersFor(selected)}
                 onDelete={() => setDeleteFor(selected)}
                 onLeave={() => setLeaveFor(selected)}
                 onRevoke={async (id) => {
                   try {
                     await respondToInvitation(id, 'revoke');
+                    setReissued(null);
                     toast.success('Invitation revoked.');
                   } catch (err) {
                     toast.error(humanizeError(err));
                   }
                 }}
+                onRename={() => setRenameFor(selected)}
+                onReissue={async (id) => {
+                  try {
+                    const result = await reissueInvitation(id);
+                    setReissued({ id, url: invitationUrl(result.token), expiresAt: result.expiresAt });
+                    toast.success('New link created — the old one no longer works.');
+                  } catch (err) {
+                    toast.error(humanizeError(err));
+                  }
+                }}
+                reissued={reissued}
+                onRefresh={() => void refresh()}
               />
             ) : (
               <EmptyState icon="users" title="Pick a team" compact>
@@ -198,17 +271,19 @@ export function TeamsPage() {
 
       <ConfirmDialog
         open={deleteFor !== null}
-        title={`Delete “${deleteFor?.name ?? ''}”?`}
+        title={`Disband “${deleteFor?.name ?? ''}”?`}
         destructive
         busy={busy}
-        confirmLabel="Delete team permanently"
+        confirmLabel="Disband this team"
+        requireTyped={deleteFor?.name}
         onClose={() => setDeleteFor(null)}
         onConfirm={() => void handleDelete()}
       >
         <p>
-          This removes the team, its canvas items, bookmarks, media links and pending invitations for every member. This
-          cannot be undone.
+          This deletes the team for <strong>every member</strong> — its canvas items, bookmarks, media links, join links
+          and pending invitations.
         </p>
+        <p className="mt-2 font-bold">There is no undo and no export.</p>
       </ConfirmDialog>
 
       <ConfirmDialog
@@ -242,100 +317,171 @@ export function TeamsPage() {
 
 function TeamDetail({
   team,
-  isOwner,
   members,
   sentInvitations,
   onOpen,
   onInvite,
-  onMembers,
-  onRename,
   onDelete,
   onLeave,
   onRevoke,
+  onReissue,
+  onRename,
+  reissued,
+  onRefresh,
 }: {
   team: WorkspaceWithMembership;
-  isOwner: boolean;
-  isMeOwner: boolean;
-  members: { id: string; user_id: string; role: string; profile: { display_name: string; avatar_url: string | null } }[];
-  sentInvitations: { id: string; status: string; invitee_email: string | null; invitee_role: string; expires_at: string }[];
+  members: MemberWithProfile[];
+  sentInvitations: Invitation[];
   onOpen: () => void;
   onInvite: () => void;
-  onMembers: () => void;
-  onRename: () => void;
   onDelete: () => void;
   onLeave: () => void;
   onRevoke: (id: string) => void;
+  onReissue: (id: string) => void;
+  onRename: () => void;
+  reissued: { id: string; url: string; expiresAt: string } | null;
+  onRefresh: () => void;
 }) {
+  const isOwner = team.myRole === 'owner';
+  const canManage = isOwner || team.myRole === 'editor';
   const pending = sentInvitations.filter((i) => i.status === 'pending');
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
+        <div className="min-w-0">
           <h2 className="text-xl font-black">{team.name}</h2>
           <p className="text-sm text-ink-soft">{team.description || 'No description yet.'}</p>
-          <p className="mt-1 text-[11px] font-bold text-ink-soft">{roleDescription(team.myRole)}</p>
+          <p className="mt-1 text-[11px] font-bold text-ink-soft">
+            You are {roleLabel(team.myRole)} · {roleDescription(team.myRole)}
+          </p>
         </div>
         <div className="flex flex-wrap gap-1.5">
           <button type="button" className="btn btn-primary min-h-9 px-3 py-1 text-sm" onClick={onOpen}>
             Open canvas
           </button>
-          <button type="button" className="btn min-h-9 px-3 py-1 text-sm" onClick={onInvite}>
-            Invite
-          </button>
+          {canManage ? (
+            <button type="button" className="btn min-h-9 px-3 py-1 text-sm" onClick={onInvite}>
+              Invite
+            </button>
+          ) : null}
         </div>
       </div>
 
-      <div>
-        <div className="mb-1 flex items-center justify-between">
+      {/* ---- members: the dedicated management surface ---- */}
+      <section>
+        <div className="mb-1 flex items-center justify-between gap-2">
           <h3 className="text-xs font-black uppercase tracking-widest text-ink-soft">Members</h3>
-          <button type="button" className="text-xs font-bold underline" onClick={onMembers}>
-            manage
-          </button>
+          <span className="text-[11px] font-bold text-ink-soft">{members.length}</span>
         </div>
-        <ul className="flex flex-wrap gap-1.5">
+        <ul className="space-y-1">
           {members.map((member) => (
-            <li key={member.id} className="chip gap-1.5 bg-cream py-1 pl-1">
-              <Avatar name={member.profile.display_name} url={member.profile.avatar_url} size={20} />
-              <span className="max-w-[120px] truncate">{member.profile.display_name}</span>
-              <span className="text-[10px] uppercase text-ink-soft">{member.role}</span>
+            <li
+              key={member.id}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-xl border-2 border-ink/25 bg-cream px-2 py-1"
+            >
+              <span className="flex min-w-0 items-center gap-1.5">
+                <Avatar name={member.profile?.display_name ?? 'Member'} url={member.profile?.avatar_url ?? null} size={20} />
+                <span className="truncate text-sm font-bold">{member.profile?.display_name ?? 'Member'}</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className={`chip text-[10px] uppercase ${member.role === 'owner' ? 'bg-mustard' : ''}`}>
+                  {roleLabel(member.role as Role)}
+                </span>
+                {canManage ? (
+                  <MemberRoleSelect
+                    member={member}
+                    team={team}
+                    isOwner={isOwner}
+                    onChanged={onRefresh}
+                  />
+                ) : null}
+              </span>
             </li>
           ))}
           {members.length === 0 ? <li className="text-xs text-ink-soft">Loading members…</li> : null}
         </ul>
-      </div>
+        <p className="mt-1 text-[11px] text-ink-soft">
+          {canManage
+            ? 'Change a role from the dropdown. Removing members and transferring ownership live in Manage members.'
+            : 'Only owners and editors can change roles.'}
+        </p>
+        <button type="button" className="btn mt-1.5 min-h-8 px-3 py-0.5 text-xs" onClick={onInvite} hidden={!canManage}>
+          Manage members &amp; permissions
+        </button>
+      </section>
 
-      <div>
+      {/* ---- join link ---- */}
+      {canManage ? (
+        <section className="rounded-xl border-[3px] border-ink bg-cream p-3">
+          <h3 className="mb-1 text-xs font-black uppercase tracking-widest text-ink-soft">Join link</h3>
+          <InviteLinkPanel workspaceId={team.id} canManage={canManage} />
+        </section>
+      ) : null}
+
+      {/* ---- pending invitations ---- */}
+      <section>
         <h3 className="mb-1 text-xs font-black uppercase tracking-widest text-ink-soft">
           Pending invitations ({pending.length})
         </h3>
         {pending.length === 0 ? (
-          <p className="text-xs text-ink-soft">No pending invitations.</p>
+          <p className="text-xs text-ink-soft">
+            No invitations yet. A join link you create above will appear here so you can re-share or revoke it.
+          </p>
         ) : (
           <ul className="space-y-1">
             {pending.map((invitation) => (
               <li
                 key={invitation.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border-2 border-ink/30 bg-paper px-2 py-1 text-xs"
+                className="rounded-xl border-2 border-ink/30 bg-paper px-2 py-1 text-xs"
               >
-                <span className="font-bold">
-                  {invitation.invitee_email ?? 'Anyone with the link'} · {invitation.invitee_role}
-                </span>
-                <span className="flex items-center gap-2">
-                  <span className="text-ink-soft">expires {relativeTime(invitation.expires_at)}</span>
-                  <button
-                    type="button"
-                    className="font-bold underline decoration-coral decoration-2 underline-offset-2"
-                    onClick={() => onRevoke(invitation.id)}
-                  >
-                    revoke
-                  </button>
-                </span>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-bold">
+                    {invitation.invitee_email ?? 'Join link'} · {invitation.invitee_role}
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span className="text-ink-soft">expires {relativeTime(invitation.expires_at)}</span>
+                    {canManage ? (
+                      <button
+                        type="button"
+                        className="font-bold underline decoration-mint decoration-2 underline-offset-2"
+                        onClick={() => onReissue(invitation.id)}
+                      >
+                        get link
+                      </button>
+                    ) : null}
+                    {canManage ? (
+                      <button
+                        type="button"
+                        className="font-bold underline decoration-coral decoration-2 underline-offset-2"
+                        onClick={() => onRevoke(invitation.id)}
+                      >
+                        revoke
+                      </button>
+                    ) : null}
+                  </span>
+                </div>
+                {reissued?.id === invitation.id ? (
+                  <div className="mt-1.5 space-y-0.5">
+                    <input
+                      readOnly
+                      className="input select-all py-0.5 font-mono text-[11px]"
+                      value={reissued.url}
+                      aria-label="Re-issued invitation link"
+                      onFocus={(event) => event.currentTarget.select()}
+                    />
+                    <p className="text-[11px] text-ink-soft">
+                      Live until {fullDate(reissued.expiresAt)}. The previous link for this invitation stopped working.
+                    </p>
+                  </div>
+                ) : null}
               </li>
             ))}
           </ul>
         )}
-      </div>
+      </section>
 
+      {/* ---- destructive zone ---- */}
       <div className="flex flex-wrap gap-1.5 border-t-[3px] border-dashed border-ink/25 pt-3">
         <Link to="/invitations" className="btn min-h-8 px-3 py-0.5 text-xs">
           All invitations
@@ -346,7 +492,7 @@ function TeamDetail({
               Rename
             </button>
             <button type="button" className="btn btn-danger min-h-8 px-3 py-0.5 text-xs" onClick={onDelete}>
-              Delete team
+              Disband team
             </button>
           </>
         ) : (
@@ -357,7 +503,7 @@ function TeamDetail({
       </div>
       {!isOwner ? (
         <p className="text-[11px] text-ink-soft">
-          Only the owner can rename or delete this team — enforced by database policies, not just the buttons.
+          Only the owner can rename or disband this team — enforced by database policies, not just the buttons.
         </p>
       ) : null}
     </div>
@@ -449,5 +595,144 @@ function RenameTeamModal({
         ) : null}
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Per-team actions on the list itself.
+ *
+ * These existed only inside the detail panel, which (because of the param bug)
+ * nobody could open. Even fixed, reaching "delete this team" required selecting
+ * it, scrolling the panel, then finding the button — so the actions live on the
+ * card too, and the destructive one is labelled in the user's words.
+ */
+function TeamCardMenu({
+  team,
+  open,
+  canManage,
+  onToggle,
+  onClose,
+  onInvite,
+  onMembers,
+  onOpen,
+  onDelete,
+}: {
+  team: WorkspaceWithMembership;
+  open: boolean;
+  canManage: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+  onInvite: () => void;
+  onMembers: () => void;
+  onOpen: () => void;
+  onDelete: () => void;
+}) {
+  const isOwner = team.myRole === 'owner';
+  return (
+    <div className="flex items-center">
+      <button
+        type="button"
+        className="grid h-7 w-7 place-items-center rounded-lg border-2 border-transparent text-ink hover:border-ink hover:bg-paper"
+        aria-label={`Actions for ${team.name}`}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={onToggle}
+      >
+        <Icon name="settings" size={15} />
+      </button>
+      {open ? (
+        <>
+          {/* click-away layer; keeps the menu dismissible without a document listener */}
+          <button
+            type="button"
+            className="fixed inset-0 z-40 cursor-default"
+            aria-label="Close menu"
+            onClick={onClose}
+          />
+          <div
+            role="menu"
+            aria-label={`Actions for ${team.name}`}
+            className="absolute right-0 top-8 z-50 w-52 rounded-xl border-[3px] border-ink bg-paper p-1 hard-shadow-sm"
+          >
+            <MenuItem onClick={onOpen}>Open canvas</MenuItem>
+            {canManage ? <MenuItem onClick={onInvite}>Invite by email or link</MenuItem> : null}
+            <MenuItem onClick={onMembers}>Manage members &amp; roles</MenuItem>
+            {isOwner ? (
+              <MenuItem onClick={onDelete} danger>
+                Disband team
+              </MenuItem>
+            ) : null}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function MenuItem({
+  children,
+  onClick,
+  danger = false,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      className={`block w-full rounded-lg px-2 py-1.5 text-left text-xs font-bold hover:bg-cream ${
+        danger ? 'text-ink hover:bg-coral' : ''
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Inline role dropdown. Owners only: editors cannot promote or demote. */
+function MemberRoleSelect({
+  member,
+  team,
+  isOwner,
+  onChanged,
+}: {
+  member: MemberWithProfile;
+  team: WorkspaceWithMembership;
+  isOwner: boolean;
+  onChanged: () => void;
+}) {
+  const { changeRole } = useWorkspaces();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+
+  // An owner's role is changed by transferring ownership, not by a dropdown:
+  // there must be exactly one owner and the server enforces that.
+  if (!isOwner || member.role === 'owner') return null;
+
+  return (
+    <select
+      className="input min-h-7 w-auto px-1 py-0 text-[11px]"
+      aria-label={`Role for ${member.profile?.display_name ?? 'member'}`}
+      value={member.role}
+      disabled={busy}
+      onChange={async (event) => {
+        setBusy(true);
+        try {
+          await changeRole(team.id, member.user_id, event.target.value as 'editor' | 'viewer');
+          toast.success('Role updated.');
+          onChanged();
+        } catch (err) {
+          toast.error(humanizeError(err));
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <option value="editor">Editor</option>
+      <option value="viewer">Viewer</option>
+    </select>
   );
 }
