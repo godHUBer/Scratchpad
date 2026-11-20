@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type RealtimeChannel } from '@supabase/supabase-js';
 import type { Database } from '../../types/database';
 
 const url = import.meta.env.VITE_SUPABASE_URL;
@@ -45,4 +45,46 @@ export function authRedirectUrl(): string {
 /** Build an invitation URL that works locally, in preview and on Pages. */
 export function invitationUrl(token: string): string {
   return `${window.location.origin}${appBasePath()}#/invite/${token}`;
+}
+
+/**
+ * Tear a realtime channel down and *wait* for it.
+ *
+ * `RealtimeClient.channel(topic)` returns the **existing** channel for a topic
+ * if one is still registered. `removeChannel()` only unregisters after
+ * `unsubscribe()` resolves, and unsubscribe is asynchronous. So this sequence
+ * is racy:
+ *
+ *   cleanup:  void supabase.removeChannel(channel)   // not awaited
+ *   next run: supabase.channel(sameTopic)            // reuses the dying one
+ *             .on('presence', ...)                   // throws: already subscribed
+ *
+ * Remembering the in-flight teardown per topic and awaiting it before creating
+ * the same topic again closes that hole.
+ */
+const tearingDown = new Map<string, Promise<unknown>>();
+
+export function teardownChannel(channel: RealtimeChannel): Promise<unknown> {
+  const topic = channel.topic;
+  const pending = supabase.removeChannel(channel).catch((error: unknown) => {
+    console.warn('[scratchpad] realtime channel teardown failed', error);
+  });
+  tearingDown.set(topic, pending);
+  void pending.finally(() => {
+    if (tearingDown.get(topic) === pending) tearingDown.delete(topic);
+  });
+  return pending;
+}
+
+/**
+ * Get a channel for `topic`, waiting for any in-flight teardown of the same
+ * topic first. Always returns a channel that is safe to `.on()` + `.subscribe()`.
+ */
+export async function freshChannel(
+  topic: string,
+  options?: Parameters<typeof supabase.channel>[1],
+): Promise<RealtimeChannel> {
+  const pending = tearingDown.get(topic);
+  if (pending) await pending.catch(() => undefined);
+  return options ? supabase.channel(topic, options) : supabase.channel(topic);
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import { supabase } from '../integrations/supabase/client';
+import { freshChannel, supabase, teardownChannel } from '../integrations/supabase/client';
 import { humanizeError } from '../lib/errors';
 import type { Bookmark, CanvasContent, CanvasItem, CanvasItemType, MediaAsset } from '../types';
 
@@ -93,8 +93,17 @@ export function useCanvasItems({ workspaceId, canWrite, onRemoteChange }: UseCan
   // ---------------------------------------------------------------- realtime
   useEffect(() => {
     if (!workspaceId) return;
-    const channel = supabase
-      .channel(`workspace-data:${workspaceId}`)
+    const topic = `workspace-data:${workspaceId}`;
+    let cancelled = false;
+    let channel: RealtimeChannel | null = null;
+
+    void freshChannel(topic).then((created) => {
+      if (cancelled) {
+        void teardownChannel(created);
+        return;
+      }
+      channel = created;
+      created
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'canvas_items', filter: `workspace_id=eq.${workspaceId}` },
@@ -161,7 +170,9 @@ export function useCanvasItems({ workspaceId, canWrite, onRemoteChange }: UseCan
       )
       .subscribe();
 
-    channelRef.current = channel;
+      channelRef.current = created;
+    });
+
     const onOnline = () => setSync((s) => (s === 'offline' ? 'idle' : s));
     const onOffline = () => setSync('offline');
     window.addEventListener('online', onOnline);
@@ -169,10 +180,11 @@ export function useCanvasItems({ workspaceId, canWrite, onRemoteChange }: UseCan
     if (!navigator.onLine) setSync('offline');
 
     return () => {
+      cancelled = true;
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
-      void supabase.removeChannel(channel);
       channelRef.current = null;
+      if (channel) void teardownChannel(channel);
     };
   }, [workspaceId]);
 

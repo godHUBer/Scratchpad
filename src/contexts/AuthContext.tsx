@@ -109,8 +109,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
 
+    // TOKEN_REFRESHED fires roughly hourly AND every time the tab becomes
+    // visible again (GoTrue restarts its refresh timer on visibilitychange).
+    // `nextSession` is a fresh object on every one of those events, so storing
+    // it verbatim churns every consumer that depends on `user`/`session`
+    // identity. That is what used to rebuild realtime channels while they were
+    // still joining, which throws:
+    //   cannot add `presence` callbacks for realtime:... after `subscribe()`
+    // Keep the previous object when the identity did not actually change.
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
+      setSession((previous) => {
+        if (!nextSession) return null;
+        if (
+          previous &&
+          previous.user.id === nextSession.user.id &&
+          previous.access_token === nextSession.access_token
+        ) {
+          return previous;
+        }
+        // Same identity, new token: reuse the previous user object so that
+        // `user` keeps a stable reference for effects and memo dependencies.
+        if (previous && previous.user.id === nextSession.user.id) {
+          return { ...nextSession, user: previous.user };
+        }
+        return nextSession;
+      });
       if (nextSession?.user) {
         if (profileUserId.current !== nextSession.user.id) void loadProfile(nextSession.user);
       } else {
