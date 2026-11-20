@@ -491,12 +491,32 @@ identity from a normal account: no email, no Supabase user, no JWT.
   rolls over. `admin_login` returns refusals as a `reason` code rather than
   raising, precisely so the failed-attempt row survives the transaction — an
   exception would roll it back and the lockout would never count.
-- What it can do: list every registered email with an online dot
-  (`profiles.last_seen_at` is stamped by a `heartbeat()` RPC on app load and once
-  a minute while the tab is visible — under 2 minutes reads as online), delete a
-  user, set a user's password (which also deletes their `auth.sessions` and
+- What it can do: list every registered email with an online dot, **search** by
+  email or name, and **sort** by name / last online / joined date in either
+  direction (click a column chip to sort, click it again to flip; clicking the
+  Ascending/Descending button flips without changing column). Users who have
+  never been seen always sink to the bottom of a "last online" sort, because
+  "never" is an absence, not the oldest date. It can also delete a user, set a user's password (which also deletes their `auth.sessions` and
   `auth.refresh_tokens`, so every device is signed out), delete a workspace, and
   revoke admin sessions.
+
+### Presence, and why it used to read "never"
+
+`heartbeat()` is called on app load, once a minute while the tab is visible, and
+on `visibilitychange`/`online`, and it stamps `profiles.last_seen_at`. Under 2
+minutes reads as online; the console refreshes every 15 s.
+
+Two failure modes were fixed after the console shipped:
+
+1. The client called `void supabase.rpc('heartbeat')`, discarding the result. Any
+   failure was invisible and everyone looked permanently offline. The error is
+   now logged once instead of being swallowed.
+2. `heartbeat()` was a plain `UPDATE`, so a missing profile row matched zero rows
+   and still reported success. It is now an `UPSERT`.
+
+`admin_list_users` additionally falls back to `last_sign_in_at` and
+`auth.sessions.updated_at` when a profile has no heartbeat yet, so an account
+that signed in before this existed shows real activity rather than "never".
 - Nothing in the admin schema is readable or writable by a client: RLS is on and
   `anon`/`authenticated` have no table grants at all. The only way in is a
   `SECURITY DEFINER` RPC holding a valid token.

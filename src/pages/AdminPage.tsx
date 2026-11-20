@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Icon } from '../components/ui/Icon';
 import { Modal } from '../components/ui/Modal';
@@ -7,6 +7,13 @@ import { useAdminConsole, type AdminUser, type AdminWorkspace } from '../hooks/u
 import { useToast } from '../contexts/ToastContext';
 import { humanizeError } from '../lib/errors';
 import { fullDate, relativeTime } from '../lib/format';
+import {
+  filterUsers,
+  resultSummary,
+  sortUsers,
+  type SortDirection,
+  type SortKey,
+} from '../lib/adminUsers';
 
 /**
  * Admin console.
@@ -27,6 +34,26 @@ export function AdminPage() {
   const [deleteWorkspaceFor, setDeleteWorkspaceFor] = useState<AdminWorkspace | null>(null);
   const [busy, setBusy] = useState(false);
   const [revokeOpen, setRevokeOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('lastSeen');
+  const [sortDir, setSortDir] = useState<SortDirection>('desc');
+
+  // Search + sort run on the rows the server already returned, so typing is
+  // instant and does not hit the database on every keystroke.
+  const visibleUsers = useMemo(
+    () => sortUsers(filterUsers(admin.users, query), sortKey, sortDir),
+    [admin.users, query, sortKey, sortDir],
+  );
+
+  /** Clicking the active column flips direction; a new column starts at its natural one. */
+  const pickSort = (key: SortKey) => {
+    if (key === sortKey) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+      return;
+    }
+    setSortKey(key);
+    setSortDir(key === 'lastSeen' ? 'desc' : 'asc');
+  };
 
   // ---- gate -------------------------------------------------------------
   if (!admin.session) {
@@ -109,7 +136,7 @@ export function AdminPage() {
         <div>
           <h1 className="text-2xl font-black tracking-tight sm:text-3xl">Admin console</h1>
           <p className="text-sm text-ink-soft">
-            {admin.users.length} account{admin.users.length === 1 ? '' : 's'} · {online} online now
+            {resultSummary(visibleUsers.length, admin.users.length, query)} · {online} online now
           </p>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -147,7 +174,74 @@ export function AdminPage() {
       ) : null}
 
       {tab === 'users' ? (
-        <section className="paper overflow-x-auto p-3">
+        <section className="paper p-3">
+          <div className="mb-3 flex flex-wrap items-end gap-2">
+            <div className="min-w-[12rem] flex-1">
+              <label className="label" htmlFor="user-search">
+                Search users
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  id="user-search"
+                  className="input"
+                  type="search"
+                  placeholder="Email or name…"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  autoComplete="off"
+                />
+                {query ? (
+                  <button
+                    type="button"
+                    className="btn min-h-9 px-2 py-1 text-xs"
+                    onClick={() => setQuery('')}
+                    aria-label="Clear search"
+                  >
+                    <Icon name="close" size={13} />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            <div>
+              <span className="label">Sort by</span>
+              <div className="flex flex-wrap gap-1">
+                {(
+                  [
+                    ['name', 'Name'],
+                    ['lastSeen', 'Last online'],
+                    ['joined', 'Joined'],
+                  ] as const
+                ).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => pickSort(key)}
+                    aria-pressed={sortKey === key}
+                    className={`chip ${sortKey === key ? 'bg-mustard' : 'bg-paper'}`}
+                  >
+                    {label}
+                    {sortKey === key ? (
+                      <span className="ml-1 font-mono" aria-hidden>
+                        {sortDir === 'asc' ? '↑' : '↓'}
+                      </span>
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="btn min-h-9 px-2 py-1 text-xs"
+              onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
+              title="Flip the sort direction"
+            >
+              {sortDir === 'asc' ? 'Ascending ↑' : 'Descending ↓'}
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
           <table className="w-full min-w-[44rem] border-collapse text-sm">
             <thead>
               <tr className="border-b-[3px] border-ink text-left text-xs uppercase tracking-wide">
@@ -161,7 +255,7 @@ export function AdminPage() {
               </tr>
             </thead>
             <tbody>
-              {admin.users.map((user) => (
+              {visibleUsers.map((user) => (
                 <tr key={user.user_id} className="border-b border-ink/15">
                   <td className="py-1.5 pr-2">
                     <span className="inline-flex items-center gap-1.5">
@@ -212,6 +306,13 @@ export function AdminPage() {
               ) : null}
             </tbody>
           </table>
+
+          {visibleUsers.length === 0 ? (
+            <p className="py-6 text-center text-sm font-bold text-ink-soft">
+              {query ? `No account matches “${query.trim()}”.` : 'No accounts yet.'}
+            </p>
+          ) : null}
+          </div>
         </section>
       ) : null}
 

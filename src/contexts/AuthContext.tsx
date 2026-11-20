@@ -214,24 +214,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw new Error(humanizeError(error));
   }, []);
 
-  // "Online" for the admin console = any page load within the last couple of
-  // minutes. Realtime presence alone is not queryable from SQL, so each signed-in
-  // client stamps profiles.last_seen_at; failures are ignored on purpose.
+  // "Online" for the admin console = a heartbeat within the last couple of
+  // minutes. Realtime presence is not queryable from SQL, so each signed-in
+  // client stamps profiles.last_seen_at.
+  //
+  // This used to `void supabase.rpc(...)`, which threw the result away: if the
+  // call failed, nothing anywhere said so and every user looked permanently
+  // offline with last_seen_at stuck at "never". The failure is now reported
+  // once, and the write is best-effort in SQL so a missing profile row cannot
+  // silently swallow it.
   const userId = session?.user.id ?? null;
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;
-    const beat = () => {
+    let warned = false;
+    const beat = async () => {
       if (cancelled || document.visibilityState === 'hidden') return;
-      void supabase.rpc('heartbeat');
+      const { error } = await supabase.rpc('heartbeat');
+      if (error && !warned) {
+        warned = true;
+        console.warn('[scratchpad] presence heartbeat failed', error.message);
+      }
     };
-    beat();
-    const interval = window.setInterval(beat, 60_000);
-    document.addEventListener('visibilitychange', beat);
+    void beat();
+    const interval = window.setInterval(() => void beat(), 60_000);
+    const onVisible = () => void beat();
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('online', onVisible);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
-      document.removeEventListener('visibilitychange', beat);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('online', onVisible);
     };
   }, [userId]);
 
