@@ -18,7 +18,8 @@ interface AuthContextValue {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
-  signInWithGoogle: () => Promise<void>;
+  /** Start the OAuth round trip for a provider. */
+  signInWithOAuth: (provider: 'google' | 'github') => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signUpWithEmail: (email: string, password: string, displayName: string) => Promise<{ needsConfirmation: boolean }>;
   updateProfile: (patch: { display_name?: string; avatar_url?: string | null }) => Promise<void>;
@@ -153,13 +154,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [loadProfile]);
 
-  const signInWithGoogle = useCallback(async () => {
-    if (!supabase) throw new Error('Supabase is not configured');
+  const signInWithOAuth = useCallback(async (provider: 'google' | 'github') => {
     const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
+      provider,
       options: {
         redirectTo: authRedirectUrl(),
-        queryParams: { prompt: 'select_account' },
+        // Google: always show the account chooser instead of silently reusing
+        // whichever Google session the browser already has.
+        queryParams: provider === 'google' ? { prompt: 'select_account' } : undefined,
       },
     });
     if (error) throw new Error(humanizeError(error));
@@ -248,7 +250,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: session?.user ?? null,
       profile,
       loading,
-      signInWithGoogle,
+      signInWithOAuth,
       signInWithEmail,
       signUpWithEmail,
       updateProfile,
@@ -261,7 +263,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       profile,
       loading,
-      signInWithGoogle,
+      signInWithOAuth,
       signInWithEmail,
       signUpWithEmail,
       updateProfile,
