@@ -1,0 +1,17 @@
+-- Local pgcrypto stand-in, installed as a real extension named `pgcrypto`.
+--
+-- 20261119000100_init_schema.sql begins with
+--     create extension if not exists pgcrypto with schema extensions;
+-- On the supabase/postgres image that installs the real extension. A bare
+-- PostgreSQL build has no contrib, so it raises "extension pgcrypto is not
+-- available" and **every migration after it silently never runs** — a test
+-- suite that proves nothing.
+--
+-- run_sql_tests.py therefore writes a matching control file + install script
+-- into the server's share/extension directory before applying migrations, and
+-- `if not exists` then short-circuits.
+--
+-- The bcrypt functions here are NOT bcrypt. They only preserve the contract the
+-- admin console depends on: crypt(plain, crypt(plain, salt)) = crypt(plain, salt),
+-- so a correct key is accepted and a wrong key is rejected. Never use this for
+-- anything but tests.

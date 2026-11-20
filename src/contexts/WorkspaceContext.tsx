@@ -306,6 +306,38 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [activeId, refresh],
   );
 
+  const loadInvitations = useCallback(async () => {
+    if (!user) {
+      setSentInvitations([]);
+      setReceivedInvitations([]);
+      return;
+    }
+    await supabase.rpc('expire_stale_invitations');
+    const { data, error: invError } = await supabase
+      .from('invitations_safe')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (invError) {
+      toast.error(humanizeError(invError));
+      return;
+    }
+    const rows = (data ?? []) as Invitation[];
+    const email = user.email?.toLowerCase() ?? '';
+    const sent: Invitation[] = [];
+    const received: Invitation[] = [];
+    const managedWorkspaceIds = new Set(
+      workspaces.filter((w) => w.myRole === 'owner' || w.myRole === 'editor').map((w) => w.id),
+    );
+    for (const row of rows) {
+      const addressedToMe =
+        row.invitee_user_id === user.id || (!!row.invitee_email && row.invitee_email.toLowerCase() === email);
+      if (addressedToMe) received.push(row);
+      if (managedWorkspaceIds.has(row.workspace_id) || row.invited_by === user.id) sent.push(row);
+    }
+    setSentInvitations(sent);
+    setReceivedInvitations(received);
+  }, [user, workspaces, toast]);
+
   const createInvitation = useCallback(
     async (input: { workspaceId: string; role: 'editor' | 'viewer'; email?: string | null; expiresInDays?: number }) => {
       const { data, error: rpcError } = await supabase.rpc('create_invitation', {
@@ -320,8 +352,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       await loadInvitations();
       return { token: row.token, expiresAt: row.expires_at, invitationId: row.invitation_id };
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+    [loadInvitations],
   );
 
   const getTeamInviteLink = useCallback(
@@ -337,8 +368,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       await loadInvitations();
       return { token: row.token, expiresAt: row.expires_at, invitationId: row.invitation_id };
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+    [loadInvitations],
   );
 
   const reissueInvitation = useCallback(
@@ -352,8 +382,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       await loadInvitations();
       return { token: row.token, expiresAt: row.expires_at };
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+    [loadInvitations],
   );
 
   const previewInvitation = useCallback(async (token: string) => {
@@ -396,37 +425,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [refresh, setActiveWorkspace],
   );
 
-  const loadInvitations = useCallback(async () => {
-    if (!user) {
-      setSentInvitations([]);
-      setReceivedInvitations([]);
-      return;
-    }
-    await supabase.rpc('expire_stale_invitations');
-    const { data, error: invError } = await supabase
-      .from('invitations_safe')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (invError) {
-      toast.error(humanizeError(invError));
-      return;
-    }
-    const rows = (data ?? []) as Invitation[];
-    const email = user.email?.toLowerCase() ?? '';
-    const sent: Invitation[] = [];
-    const received: Invitation[] = [];
-    const managedWorkspaceIds = new Set(
-      workspaces.filter((w) => w.myRole === 'owner' || w.myRole === 'editor').map((w) => w.id),
-    );
-    for (const row of rows) {
-      const addressedToMe =
-        row.invitee_user_id === user.id || (!!row.invitee_email && row.invitee_email.toLowerCase() === email);
-      if (addressedToMe) received.push(row);
-      if (managedWorkspaceIds.has(row.workspace_id) || row.invited_by === user.id) sent.push(row);
-    }
-    setSentInvitations(sent);
-    setReceivedInvitations(received);
-  }, [user, workspaces, toast]);
 
   const respondToInvitation = useCallback(
     async (id: string, action: 'decline' | 'revoke') => {
