@@ -6,6 +6,7 @@ import { Toaster } from './components/ui/Toaster';
 import { RequireAuth } from './components/RequireAuth';
 import { AppLayout } from './components/AppLayout';
 import { SignInPage } from './pages/SignInPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { WorkspacePage } from './pages/WorkspacePage';
 import { TeamsPage } from './pages/TeamsPage';
 import { InvitationsPage } from './pages/InvitationsPage';
@@ -22,6 +23,7 @@ export default function App() {
           <HashRouter>
             <Routes>
               <Route path="/signin" element={<SignInPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/invite/:token" element={<JoinInvitePage />} />
               <Route
                 element={

@@ -64,8 +64,22 @@ export function invitationUrl(token: string): string {
  */
 const tearingDown = new Map<string, Promise<unknown>>();
 
+/**
+ * Channels we have torn down (or are tearing down) whose teardown has not
+ * finished yet. A stale channel can still deliver `presence sync` / `postgres
+ * changes` callbacks into a *new* subscription's handlers while it drains, so
+ * every handler checks this before touching state.
+ */
+const retired = new WeakSet<RealtimeChannel>();
+
+/** Guard for callbacks on a channel that may already be on its way out. */
+export function isChannelRetired(channel: RealtimeChannel): boolean {
+  return retired.has(channel);
+}
+
 export function teardownChannel(channel: RealtimeChannel): Promise<unknown> {
   const topic = channel.topic;
+  retired.add(channel);
   const pending = supabase.removeChannel(channel).catch((error: unknown) => {
     console.warn('[scratchpad] realtime channel teardown failed', error);
   });

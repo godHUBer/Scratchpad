@@ -1,13 +1,21 @@
 import { useEffect, useState } from 'react';
 import { Modal } from '../ui/Modal';
 import type { CanvasItem } from '../../types';
+import { FontPicker } from './FontPicker';
+import { fontStack, DEFAULT_FONT } from '../../lib/fonts';
 
 interface TextEditorModalProps {
   open: boolean;
   item: CanvasItem | null;
   initialText?: string;
   onClose: () => void;
-  onSave: (value: { text: string; fontSize: number; color: string; align: 'left' | 'center' | 'right' }) => Promise<void>;
+  onSave: (value: {
+    text: string;
+    fontSize: number;
+    color: string;
+    align: 'left' | 'center' | 'right';
+    fontFamily: string;
+  }) => Promise<void>;
   defaultSize: number;
   defaultColor: string;
 }
@@ -25,6 +33,7 @@ export function TextEditorModal({
   const [fontSize, setFontSize] = useState(defaultSize);
   const [color, setColor] = useState(defaultColor);
   const [align, setAlign] = useState<'left' | 'center' | 'right'>('left');
+  const [fontFamily, setFontFamily] = useState<string>(DEFAULT_FONT);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,6 +43,7 @@ export function TextEditorModal({
     setFontSize(item?.content.fontSize ?? defaultSize);
     setColor(item?.content.color ?? defaultColor);
     setAlign(item?.content.align ?? 'left');
+    setFontFamily(item?.content.fontFamily ?? DEFAULT_FONT);
     setError(null);
   }, [open, item, initialText, defaultSize, defaultColor]);
 
@@ -42,7 +52,7 @@ export function TextEditorModal({
     setBusy(true);
     setError(null);
     try {
-      await onSave({ text, fontSize, color, align });
+      await onSave({ text, fontSize, color, align, fontFamily });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save the text.');
@@ -84,8 +94,10 @@ export function TextEditorModal({
             data-autofocus
             placeholder="Write a thought, a heading, a todo…"
             required
+            style={{ fontFamily: fontStack(fontFamily), fontSize, color }}
           />
         </div>
+        <FontPicker value={fontFamily} onChange={setFontFamily} />
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="label" htmlFor="font-size">

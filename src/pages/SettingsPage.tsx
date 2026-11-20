@@ -9,17 +9,21 @@ import { roleLabel } from '../lib/permissions';
 import { fullDate } from '../lib/format';
 import { humanizeError } from '../lib/errors';
 import { readAppConfig } from '../lib/config';
+import { DeleteWorkspaceDialog } from '../components/teams/DeleteWorkspaceDialog';
+import { RetentionSettings } from '../components/settings/RetentionSettings';
+import type { WorkspaceWithMembership } from '../types';
 import { Icon } from '../components/ui/Icon';
 
 export function SettingsPage() {
   const { user, profile, updateProfile, signOut } = useAuth();
-  const { workspaces, setActiveWorkspace } = useWorkspaces();
+  const { workspaces, setActiveWorkspace, refresh } = useWorkspaces();
   const toast = useToast();
   const [displayName, setDisplayName] = useState(profile?.display_name ?? '');
   const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [signOutOpen, setSignOutOpen] = useState(false);
+  const [deleteFor, setDeleteFor] = useState<WorkspaceWithMembership | null>(null);
   const config = readAppConfig();
 
   const save = async (event: React.FormEvent) => {
@@ -116,11 +120,23 @@ export function SettingsPage() {
                 >
                   Open
                 </Link>
+                {workspace.owner_id === user?.id ? (
+                  <button
+                    type="button"
+                    className="btn btn-danger min-h-7 px-2 py-0.5 text-[11px]"
+                    onClick={() => setDeleteFor(workspace)}
+                    aria-label={`Delete ${workspace.name}`}
+                  >
+                    Delete
+                  </button>
+                ) : null}
               </span>
             </li>
           ))}
         </ul>
       </section>
+
+      <RetentionSettings />
 
       <section className="paper p-4">
         <h2 className="text-lg font-extrabold">Connection</h2>
@@ -147,6 +163,17 @@ export function SettingsPage() {
           Sign out
         </button>
       </section>
+
+      <DeleteWorkspaceDialog
+        open={deleteFor !== null}
+        workspace={deleteFor}
+        isPersonal={(deleteFor?.type ?? 'personal') === 'personal'}
+        onClose={() => setDeleteFor(null)}
+        onDeleted={() => {
+          setDeleteFor(null);
+          void refresh();
+        }}
+      />
 
       <ConfirmDialog
         open={signOutOpen}

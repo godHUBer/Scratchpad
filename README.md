@@ -256,10 +256,20 @@ Rendering strategy per type:
 
 | Type | First try | Fallback | Final state |
 |---|---|---|---|
-| Image | `lh3.googleusercontent.com/d/<id>=w1600` | Drive `/preview` iframe | "inaccessible" panel + open in Drive |
-| Audio | native `<audio>` on `drive.usercontent.google.com/download` | Drive `/preview` iframe | "unsupported" + open in Drive |
-| Video | native `<video>` (same host) | Drive `/preview` iframe | same |
+| Image | `lh3.googleusercontent.com/d/<id>=w2000` | Drive `/preview` iframe | "inaccessible" panel + open in Drive |
+| Audio (Drive) | Drive `/preview` iframe directly | — | labelled player + open in Drive |
+| Video (Drive) | Drive `/preview` iframe directly | — | same |
+| Audio/video (direct https) | native `<audio>`/`<video>` | Drive preview | open original |
 | Link/unknown | Drive `/preview` iframe | — | link card |
+
+Drive audio/video used to be pointed at `drive.usercontent.google.com/download`.
+That endpoint answers with `Content-Disposition: attachment`, so the browser
+downloads the file instead of decoding it: every `<audio>`/`<video>` failed once
+and the card then flipped to a clipped 132 px iframe on a black background, which
+is what "Drive audio looks buggy" was. Drive-hosted players now go straight to
+the preview iframe, which is the only Drive surface that actually streams, and
+the card shows the file name and an **Open** link outside the iframe so a blocked
+embed is never a blank rectangle.
 
 Important, honest limitations:
 
@@ -269,6 +279,54 @@ Important, honest limitations:
 - Drive rate-limits/hotlink policies can break `lh3` images for very popular files.
 - Very large videos may not stream directly; the `/preview` iframe is the reliable path.
 - Anyone holding a shareable Drive link can open the original file regardless of Scratchpad permissions. The add-media dialog warns about this.
+
+---
+
+## 5a. Text, fonts and importing a font
+
+Canvas text items store `content.fontFamily` as a plain CSS stack. Eight faces are
+built in (Trebuchet, Verdana, Georgia, Times, Garamond, Courier, Comic) and need no
+network access.
+
+`Import a font…` in the text editor or the toolbox accepts:
+
+- a Google Fonts **CSS link** (`https://fonts.googleapis.com/css2?family=…`), or
+- a direct `.woff2` / `.ttf` / `.otf` URL.
+
+Only `https:` is accepted (anything else is mixed content on the deployed site and
+would fail silently). The family name is restricted to letters, digits, spaces,
+`.`/`-`/`_` so it cannot break out of the CSS string it is interpolated into.
+Imports are stored per device in `localStorage["scratchpad.fonts"]`; teammates need
+to import the same URL to see the same face. Nothing is uploaded to Scratchpad.
+
+---
+
+## 5b. Retention: the 60 → 90 → 100 day cleanup pipeline
+
+`supabase/migrations/20261119001000_retention_and_deletion.sql`
+
+| Stage | What happens |
+|---|---|
+| Day 60 | flagged as idle in the UI. **Nothing is modified.** |
+| Day 90 | `deleted_at` is set — the row moves to **Trash** and can be restored in one click |
+| Day 100 | the row is deleted permanently |
+
+Design choices worth knowing:
+
+- **Soft delete, not `DELETE`.** The client only has `SELECT`; every write is a
+  `SECURITY DEFINER` RPC. A sweeper that bypassed that would have no undo and no
+  audit trail. `deleted_at` / `purge_after` keep every existing policy, RPC and
+  realtime subscription working — the read policies simply add
+  `deleted_at is null or can_edit_workspace(...)` so trash stays visible to
+  editors and invisible to everyone else.
+- **It ships paused.** `retention_policy.enabled` defaults to `false`. Installing
+  the migration schedules the job but does not start deleting anyone's work.
+  Switch it on in **Settings → Auto-cleanup**.
+- **Scheduling** uses `pg_cron` when the extension is available (Supabase), and
+  degrades to a `notice` with instructions to call
+  `public.run_retention_sweep()` from an external scheduler when it is not.
+  The function itself is revoked from `anon`/`authenticated`.
+- `run_retention_sweep()` is idempotent and returns `(moved_to_trash, purged)`.
 
 ---
 
@@ -317,6 +375,13 @@ Things that can only be verified in a real browser with real accounts:
 
 **Canvas**
 - [ ] Text, brush, eraser (click any object to delete it, undo restores it), select/move/resize, duplicate, layer order, arrows to nudge, Ctrl/⌘+Z undo.
+- [ ] **Drag every kind of item**: text, note, drawing stroke, image, audio, video, bookmark, link card. Only text/notes used to move.
+- [ ] Dragging an **image** keeps the picture visible mid-gesture (it used to be a blank box).
+- [ ] **Double-click an image / audio / video card** → full-size preview dialog. Works while signed in as a **viewer** too.
+- [ ] Pressing play on an audio/video card must not drag the card.
+- [ ] Add three media cards in a row: they must not overlap, and they land near what you are looking at (pan/zoom first).
+- [ ] Add image / audio / video / link from the toolbar → the dialog opens with **that** type selected.
+- [ ] Select a text item → change the font (8 built in); import a Google Fonts CSS link and see it apply.
 - [ ] Drawing tools click *through* media cards (brush/eraser work over a card), while Select interacts with the card body (player, Open original).
 - [ ] Reload restores the scene; the sync pill shows Saving → Saved.
 - [ ] Two browsers on the same team: creating/moving/deleting an item appears live.
@@ -324,9 +389,18 @@ Things that can only be verified in a real browser with real accounts:
 
 **Drive media**
 - [ ] Shared image link → image card renders; **private** link → permission panel with "Open original".
-- [ ] Audio/video: direct player if allowed, otherwise Drive preview iframe, otherwise fallback.
+- [ ] Drive audio/video shows the Drive player on a cream card with its file name and an **Open** link — never a solid black rectangle.
 - [ ] Manual type override produces a working card.
 - [ ] Move, resize, edit and delete a card; "Open original" opens Drive.
+
+**Password reset**
+- [ ] Sign in page has **Forgot your password?** → sends the reset mail.
+- [ ] The emailed link lands on `#/reset-password` and sets a new password.
+
+**Auto-cleanup / Trash**
+- [ ] Settings → Auto-cleanup shows Day 60 / 90 / 100 and starts **Paused**.
+- [ ] Canvas → **Trash** lists swept items and **Restore** puts one back.
+- [ ] Settings → Your workspaces has **Delete** for a workspace you own (personal *and* team).
 
 **Teams & invitations**
 - [ ] Create team from the hamburger menu → opens the new team's canvas, you are Owner.
@@ -362,3 +436,8 @@ Things that can only be verified in a real browser with real accounts:
 | `42501` / permission errors | your role forbids it | ask an owner for editor access |
 | Nothing syncs between browsers | Realtime publication missing | rerun `…_realtime.sql` |
 | `cannot add 'presence' callbacks … after 'subscribe()'` after switching tabs | fixed in `usePresence`: the channel depended on profile fields, and token refreshes on tab focus rebuilt it mid-join | update to the latest build; the hook now keys the channel on `(workspaceId, user.id)` only and awaits teardown before re-subscribing |
+| New cards all stack in one place | placement used `window.innerWidth` and ignored panning/zoom | fixed: new cards spiral to a free slot near the visible centre |
+| Image card is an empty white box | the DOM overlay returned `null` for images while the shell painted an opaque background over the Konva bitmap | fixed: images render a real `<img>`; the shell is transparent for image cards |
+| Drive audio is a black rectangle | `download?export=download` returns an attachment, so the player always failed, then the iframe covered the card | fixed: Drive audio goes straight to the preview iframe on a cream background with its file name and an Open link |
+| Media modal always says "Image" | the clicked kind was never passed to the dialog | fixed: the toolbar button seeds `initialKind` |
+| Emoji boxes (▯) in the media-type buttons | emoji glyphs depend on a colour-emoji font | replaced with the inline SVG icon set |

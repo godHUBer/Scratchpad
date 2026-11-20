@@ -92,8 +92,12 @@ describe('driveDirectUrl', () => {
   it('uses the image host for images', () => {
     expect(driveDirectUrl('1AbCdEfGhIjKl', 'image')).toContain('lh3.googleusercontent.com/d/1AbCdEfGhIjKl');
   });
-  it('uses the download host for audio/video', () => {
-    expect(driveDirectUrl('1AbCdEfGhIjKl', 'video')).toContain('drive.usercontent.google.com/download?id=1AbCdEfGhIjKl');
+  it('does not offer a direct URL for audio/video (Drive replies with an attachment)', () => {
+    // Regression: the download endpoint returns Content-Disposition: attachment,
+    // so an <audio>/<video> pointed at it can never play. Callers must use the
+    // preview iframe instead.
+    expect(driveDirectUrl('1AbCdEfGhIjKl', 'video')).toBeNull();
+    expect(driveDirectUrl('1AbCdEfGhIjKl', 'audio')).toBeNull();
   });
   it('returns null for links', () => {
     expect(driveDirectUrl('1AbCdEfGhIjKl', 'link')).toBeNull();

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import { freshChannel, supabase, teardownChannel } from '../integrations/supabase/client';
+import { freshChannel, isChannelRetired, supabase, teardownChannel } from '../integrations/supabase/client';
 import { humanizeError } from '../lib/errors';
 import type { Bookmark, CanvasContent, CanvasItem, CanvasItemType, MediaAsset } from '../types';
 
@@ -108,6 +108,7 @@ export function useCanvasItems({ workspaceId, canWrite, onRemoteChange }: UseCan
         'postgres_changes',
         { event: '*', schema: 'public', table: 'canvas_items', filter: `workspace_id=eq.${workspaceId}` },
         (payload) => {
+          if (cancelled || isChannelRetired(created)) return;
           if (payload.eventType === 'DELETE') {
             const old = payload.old as Partial<CanvasItem>;
             if (!old.id) return;
@@ -136,6 +137,7 @@ export function useCanvasItems({ workspaceId, canWrite, onRemoteChange }: UseCan
         'postgres_changes',
         { event: '*', schema: 'public', table: 'bookmarks', filter: `workspace_id=eq.${workspaceId}` },
         (payload) => {
+          if (cancelled || isChannelRetired(created)) return;
           if (payload.eventType === 'DELETE') {
             const old = payload.old as Partial<Bookmark>;
             if (!old.id) return;
@@ -154,6 +156,7 @@ export function useCanvasItems({ workspaceId, canWrite, onRemoteChange }: UseCan
         'postgres_changes',
         { event: '*', schema: 'public', table: 'media_assets', filter: `workspace_id=eq.${workspaceId}` },
         (payload) => {
+          if (cancelled || isChannelRetired(created)) return;
           if (payload.eventType === 'DELETE') {
             const old = payload.old as Partial<MediaAsset>;
             if (!old.id) return;

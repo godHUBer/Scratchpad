@@ -40,6 +40,8 @@ const PATHS = {
   zoomOut: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4M8.5 11h5',
   reset: 'M4 10a8 8 0 1 1 2 6M4 5v5h5',
   undo: 'M9 7L4 12l5 5M4 12h9a6 6 0 0 1 0 12h-2',
+  back: 'M10 5l-7 7 7 7M3 12h13',
+  font: 'M5 20L12 4l7 16M8 14h8',
   cursor: 'M5 3l6.5 17 2.3-6.6 6.7-2.4z',
 } as const;
 

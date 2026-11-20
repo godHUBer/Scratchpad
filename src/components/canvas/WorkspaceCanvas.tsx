@@ -21,6 +21,8 @@ import {
 import type { Bookmark, CanvasItem, MediaAsset } from '../../types';
 import type { NewCanvasItem } from '../../hooks/useCanvasItems';
 import { clamp } from '../../lib/format';
+import { fontStack } from '../../lib/fonts';
+import { visibleCentre } from './placement';
 
 const CARD_TYPES = ['image', 'audio', 'video', 'media_link', 'bookmark'] as const;
 const isCardType = (type: string) => (CARD_TYPES as readonly string[]).includes(type);
@@ -53,6 +55,8 @@ interface WorkspaceCanvasProps {
   onError: (message: string) => void;
   onUndoAvailable: (available: boolean) => void;
   onZoomChange?: (scale: number) => void;
+  /** World-space centre of what the user can currently see. */
+  onViewportChange?: (centre: { x: number; y: number }) => void;
   onOpenCardEditor?: (item: CanvasItem) => void;
   onEraseNotice?: () => void;
 }
@@ -78,6 +82,7 @@ export function WorkspaceCanvas({
   onError,
   onUndoAvailable,
   onZoomChange,
+  onViewportChange,
   onOpenCardEditor,
   onEraseNotice = () => {},
 }: WorkspaceCanvasProps) {
@@ -112,6 +117,14 @@ export function WorkspaceCanvas({
   useEffect(() => {
     onZoomChange?.(viewport.scale);
   }, [viewport.scale, onZoomChange]);
+
+  // Report the centre of the pane in world coordinates. New cards are placed
+  // relative to this instead of a `window.innerWidth` guess, so they land where
+  // the user is actually looking (and never on top of each other).
+  useEffect(() => {
+    if (size.width === 0 || size.height === 0) return;
+    onViewportChange?.(visibleCentre(viewport, size));
+  }, [viewport, size, onViewportChange]);
 
   // centre a fresh, empty canvas
   const centredRef = useRef(false);
@@ -538,27 +551,25 @@ export function WorkspaceCanvas({
               <CanvasNode
                 key={item.id}
                 item={item}
-                bookmark={null}
-                media={null}
                 selected={selectedIds.includes(item.id)}
                 canInteract={nodeInteraction}
                 onSelect={selectHandler}
                 onDragStart={handleNodeDragStart}
                 onDragEnd={(id, x, y) => void handleNodeDragEnd(id, x, y)}
                 onDoubleClick={onOpenTextEditor}
+                fontFamily={fontStack(item.content.fontFamily)}
               />
             ) : item.item_type === 'text' || item.item_type === 'note' ? (
               <CanvasNode
                 key={item.id}
                 item={item}
-                bookmark={null}
-                media={null}
                 selected={selectedIds.includes(item.id)}
                 canInteract={tool === 'select' || tool === 'eraser'}
                 onSelect={selectHandler}
                 onDragStart={handleNodeDragStart}
                 onDragEnd={(id, x, y) => void handleNodeDragEnd(id, x, y)}
                 onDoubleClick={onOpenTextEditor}
+                fontFamily={fontStack(item.content.fontFamily)}
               />
             ) : null,
           )}
@@ -661,12 +672,23 @@ export function WorkspaceCanvas({
                   transition: 'border-width 80ms ease-out',
                   borderRadius: 14,
                   boxShadow: '3px 3px 0 0 #080808',
-                  background: item.item_type === 'bookmark' ? bookmarks[item.bookmark_id ?? '']?.color ?? '#f7c948' : '#fffdf6',
+                  // Image cards must be transparent here: the Konva layer below
+                  // paints the bitmap, and an opaque background would hide it.
+                  // (That bug is why images never showed a preview while moving
+                  // and why double-clicking them appeared to do nothing.)
+                  background:
+                    item.item_type === 'image'
+                      ? 'transparent'
+                      : item.item_type === 'bookmark'
+                        ? bookmarks[item.bookmark_id ?? '']?.color ?? '#f7c948'
+                        : '#fffdf6',
                   pointerEvents: cardInteraction ? 'auto' : 'none',
                 }}
                 onDoubleClick={(event) => {
                   event.stopPropagation();
-                  if (canWrite) onOpenCardEditor?.(item);
+                  // Doubling-clicking a media card opens it, always — the editor
+                  // gate only applies to changing the link.
+                  onOpenCardEditor?.(item);
                 }}
               >
                 <CanvasCardOverlay
