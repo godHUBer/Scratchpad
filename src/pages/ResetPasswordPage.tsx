@@ -70,7 +70,7 @@ export function ResetPasswordPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden p-4 sm:p-8">
+    <div className="relative flex min-h-dvh-screen items-center justify-center overflow-hidden p-4 sm:p-8">
       <div className="pointer-events-none absolute -left-16 top-10 h-40 w-40 rotate-12 rounded-card border-[3px] border-ink bg-lilac/50" />
       <div className="pointer-events-none absolute -right-10 bottom-16 h-32 w-32 -rotate-6 rounded-card border-[3px] border-ink bg-mint/50" />
 

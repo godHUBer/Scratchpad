@@ -7,6 +7,7 @@ import {
   type ResizeHandle,
 } from './canvasMath';
 import type { CanvasItem } from '../../types';
+import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 
 export interface Rect {
   x: number;
@@ -81,6 +82,8 @@ export function SelectedCardBox({
   }, [item.id]);
 
   const rect = live ?? { x: item.position_x, y: item.position_y, width: item.width, height: item.height };
+  // A 14px grab handle is usable with a mouse and not with a thumb.
+  const handleSize = useCoarsePointer() ? 24 : 14;
   const style = {
     left: rect.x * viewport.scale + viewport.x,
     top: rect.y * viewport.scale + viewport.y,
@@ -198,10 +201,16 @@ export function SelectedCardBox({
                 onPointerDown={handlePointerDown(handle)}
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}
-                className="pointer-events-auto absolute h-3.5 w-3.5 rounded-sm border-2 border-ink bg-paper"
+                /* 14px is fine for a mouse pointer and hopeless for a thumb.
+                   The handle grows to 24px under a coarse pointer, and is
+                   offset by half its own size so it stays centred on the corner
+                   at either size. */
+                className="pointer-events-auto absolute rounded-sm border-2 border-ink bg-paper"
                 style={{
-                  left: pos.x - 7,
-                  top: pos.y - 7,
+                  width: handleSize,
+                  height: handleSize,
+                  left: pos.x - handleSize / 2,
+                  top: pos.y - handleSize / 2,
                   cursor: handleCursor(handle),
                   touchAction: 'none',
                 }}

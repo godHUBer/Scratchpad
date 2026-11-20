@@ -415,7 +415,10 @@ export function WorkspacePage() {
   }
 
   return (
-    <div className="relative flex h-[calc(100vh-61px)] flex-col">
+    // h-full, not calc(100vh - 61px): the header height is not a constant. It
+    // grows with a safe-area inset, changes with text size, and differs between
+    // mobile browsers, so a magic 61px left the canvas overlapping or short.
+    <div className="relative flex h-full min-h-0 flex-col">
       <div className="relative flex-1 overflow-hidden">
         <FloatingToolbar
           tool={tool}

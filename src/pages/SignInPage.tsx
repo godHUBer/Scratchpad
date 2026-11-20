@@ -58,7 +58,7 @@ export function SignInPage() {
 
   if (loading) {
     return (
-      <div className="grid min-h-screen place-items-center p-6">
+      <div className="grid min-h-dvh-screen place-items-center p-6">
         <div className="paper px-6 py-5">
           <Spinner label="Checking your session…" />
         </div>
@@ -110,7 +110,7 @@ export function SignInPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden p-4 sm:p-8">
+    <div className="relative flex min-h-dvh-screen items-center justify-center overflow-hidden p-4 sm:p-8">
       <div className="pointer-events-none absolute -left-16 top-10 h-40 w-40 rotate-12 rounded-card border-[3px] border-ink bg-mint/50" />
       <div className="pointer-events-none absolute -right-10 bottom-16 h-32 w-32 -rotate-6 rounded-card border-[3px] border-ink bg-sky/50" />
 

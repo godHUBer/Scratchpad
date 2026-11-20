@@ -66,7 +66,7 @@ export function ContextToolbox(props: ContextToolboxProps) {
       <button
         type="button"
         onClick={onToggleCollapsed}
-        className="absolute left-2 top-[7.5rem] z-20 grid h-10 w-10 place-items-center rounded-xl border-[3px] border-ink bg-paper hard-shadow-sm sm:top-20"
+        className="absolute left-2 top-[9.5rem] z-20 grid h-10 w-10 place-items-center rounded-xl border-[3px] border-ink bg-paper hard-shadow-sm pointer-coarse:h-11 pointer-coarse:w-11 sm:top-20"
         aria-label="Show toolbox"
         title="Show toolbox"
       >
@@ -77,15 +77,15 @@ export function ContextToolbox(props: ContextToolboxProps) {
 
   return (
     <aside
-      className="absolute left-2 top-[7.5rem] z-20 max-h-[calc(100%-9rem)] w-[232px] max-w-[calc(100%-1rem)] overflow-y-auto rounded-2xl border-[3px] border-ink bg-paper p-3 hard-shadow-sm sm:top-20 sm:w-[248px]"
-      style={{ maxHeight: 'calc(100% - 140px)' }}
+      className="app-scroll absolute left-2 top-[9.5rem] z-20 w-[232px] max-w-[calc(100%-1rem)] overflow-y-auto rounded-2xl border-[3px] border-ink bg-paper p-3 hard-shadow-sm sm:top-20 sm:w-[248px]"
+      style={{ maxHeight: 'calc(100% - 10.5rem)' }}
       aria-label="Contextual toolbox"
     >
       <div className="mb-2 flex items-center justify-between">
         <h2 className="text-sm font-black uppercase tracking-widest text-ink-soft">Toolbox</h2>
         <button
           type="button"
-          className="grid h-7 w-7 place-items-center rounded-lg border-2 border-ink bg-paper text-xs font-black"
+          className="grid h-7 w-7 place-items-center rounded-lg border-2 border-ink bg-paper text-xs font-black pointer-coarse:h-11 pointer-coarse:w-11"
           onClick={onToggleCollapsed}
           aria-label="Hide toolbox"
         >
@@ -401,7 +401,7 @@ function Swatches({ value, onChange }: { value: string; onChange: (value: string
           onClick={() => onChange(color)}
           aria-label={`Colour ${color}`}
           aria-pressed={value.toLowerCase() === color.toLowerCase()}
-          className={`h-7 w-7 rounded-full border-2 border-ink ${
+          className={`h-7 w-7 rounded-full border-2 border-ink pointer-coarse:h-10 pointer-coarse:w-10 ${
             value.toLowerCase() === color.toLowerCase() ? 'ring-2 ring-ink ring-offset-1' : ''
           }`}
           style={{ backgroundColor: color }}
@@ -412,7 +412,7 @@ function Swatches({ value, onChange }: { value: string; onChange: (value: string
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-label="Custom colour"
-        className="h-7 w-8 cursor-pointer rounded border-2 border-ink bg-paper p-0"
+        className="h-7 w-8 cursor-pointer rounded border-2 border-ink bg-paper p-0 pointer-coarse:h-10 pointer-coarse:w-11"
       />
     </div>
   );

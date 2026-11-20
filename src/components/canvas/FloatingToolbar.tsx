@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+
 import type { SyncState } from '../../hooks/useCanvasItems';
 import { Icon, type IconName } from '../ui/Icon';
 
@@ -53,31 +53,44 @@ export function FloatingToolbar({
   onRetrySync,
 }: FloatingToolbarProps) {
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-2 z-20 flex justify-center px-2">
-      <div className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-1 rounded-2xl border-[3px] border-ink bg-paper p-1.5 hard-shadow-sm">
-        <div className="flex items-center gap-1">
-          {TOOLS.map((t) => (
-            <ToolButton
-              key={t.id}
-              label={t.label}
-              icon={t.icon}
-              active={tool === t.id}
-              onClick={() => onTool(t.id)}
-              ariaPressed={tool === t.id}
-            />
-          ))}
+    /*
+      On a phone this used to wrap into three or four rows and eat the top third
+      of the canvas. It is now a single row that scrolls horizontally: the tools
+      stay one tap away, the canvas keeps its space, and the sync pill sits on
+      its own so it never squeezes the buttons.
+    */
+    <div className="pointer-events-none absolute inset-x-0 top-2 z-20 flex flex-col items-center gap-1 px-2">
+      <div className="pointer-events-auto flex w-full max-w-full items-center gap-1 rounded-2xl border-[3px] border-ink bg-paper p-1.5 hard-shadow-sm sm:w-auto sm:justify-center">
+        <div className="no-scrollbar app-scroll flex flex-1 items-center gap-1 overflow-x-auto sm:flex-none sm:overflow-visible">
+          <div className="flex shrink-0 items-center gap-1">
+            {TOOLS.map((t) => (
+              <ToolButton
+                key={t.id}
+                label={t.label}
+                icon={t.icon}
+                active={tool === t.id}
+                onClick={() => onTool(t.id)}
+                ariaPressed={tool === t.id}
+              />
+            ))}
+          </div>
+          <Divider />
+          <div className="flex shrink-0 items-center gap-1">
+            <ToolButton label="Add text" icon="text" onClick={onText} disabled={disabledActions} />
+            <ToolButton label="Add image" icon="image" onClick={onImage} disabled={disabledActions} />
+            <ToolButton label="Add audio" icon="audio" onClick={onAudio} disabled={disabledActions} />
+            <ToolButton label="Add video" icon="video" onClick={onVideo} disabled={disabledActions} />
+            <ToolButton label="Add bookmark" icon="bookmark" onClick={onBookmark} disabled={disabledActions} />
+            <ToolButton label="Add media link" icon="link" onClick={onMediaLink} disabled={disabledActions} />
+          </div>
         </div>
-        <Divider />
-        <div className="flex items-center gap-1">
-          <ToolButton label="Add text" icon="text" onClick={onText} disabled={disabledActions} />
-          <ToolButton label="Add image" icon="image" onClick={onImage} disabled={disabledActions} />
-          <ToolButton label="Add audio" icon="audio" onClick={onAudio} disabled={disabledActions} />
-          <ToolButton label="Add video" icon="video" onClick={onVideo} disabled={disabledActions} />
-          <ToolButton label="Add bookmark" icon="bookmark" onClick={onBookmark} disabled={disabledActions} />
-          <ToolButton label="Add media link" icon="link" onClick={onMediaLink} disabled={disabledActions} />
+        <div className="shrink-0 sm:hidden">
+          <SyncPill state={syncState} lastSavedAt={lastSavedAt} conflicts={conflictCount} onRetry={onRetrySync} compact />
         </div>
-        <Divider />
-        <SyncPill state={syncState} lastSavedAt={lastSavedAt} conflicts={conflictCount} onRetry={onRetrySync} />
+        <div className="hidden shrink-0 items-center gap-1 sm:flex">
+          <Divider />
+          <SyncPill state={syncState} lastSavedAt={lastSavedAt} conflicts={conflictCount} onRetry={onRetrySync} />
+        </div>
       </div>
     </div>
   );
@@ -106,7 +119,9 @@ function ToolButton({
       aria-pressed={ariaPressed}
       aria-label={label}
       title={label}
-      className={`grid h-9 w-9 place-items-center rounded-xl border-2 text-ink transition-colors sm:h-10 sm:w-10 ${
+      // 36px under a mouse, 44px under a finger. This is the most-tapped
+      // control in the app and 36px is below the comfortable threshold.
+      className={`grid h-9 w-9 place-items-center rounded-xl border-2 text-ink transition-colors pointer-coarse:h-11 pointer-coarse:w-11 sm:h-10 sm:w-10 ${
         active
           ? 'border-ink bg-mustard shadow-[2px_2px_0_0_#080808]'
           : 'border-transparent hover:border-ink hover:bg-cream'
@@ -126,11 +141,14 @@ export function SyncPill({
   lastSavedAt,
   conflicts,
   onRetry,
+  compact = false,
 }: {
   state: SyncState;
   lastSavedAt: Date | null;
   conflicts: number;
   onRetry: () => void;
+  /** Icon-only form for narrow screens, where the label steals the toolbar. */
+  compact?: boolean;
 }) {
   const config: Record<SyncState, { label: string; className: string; detail: string }> = {
     idle: { label: 'Ready', className: 'bg-paper', detail: 'Changes save automatically' },
@@ -153,8 +171,11 @@ export function SyncPill({
         onClick={interactive ? onRetry : undefined}
         disabled={!interactive}
         title={`${detail}${conflicts > 0 ? ` · ${conflicts} remote update${conflicts === 1 ? '' : 's'} merged` : ''}`}
-        className={`chip min-h-8 ${className} ${interactive ? 'hover:bg-paper' : ''}`}
+        className={`chip min-h-8 ${className} ${interactive ? 'hover:bg-paper' : ''} ${
+          compact ? 'tap-sm min-w-11 justify-center px-1.5' : ''
+        }`}
         aria-live="polite"
+        aria-label={compact ? `${label}. ${detail}` : undefined}
       >
         <span
           className={`inline-block h-2 w-2 rounded-full border border-ink ${
@@ -162,7 +183,7 @@ export function SyncPill({
           }`}
           aria-hidden
         />
-        {label}
+        {compact ? null : label}
       </button>
       {conflicts > 0 ? (
         <span className="chip min-h-8 bg-lilac" title="Remote edits were merged into your canvas">
@@ -173,6 +194,3 @@ export function SyncPill({
   );
 }
 
-export function ToolbarIcon({ children }: { children: ReactNode }) {
-  return <span className="grid h-9 w-9 place-items-center">{children}</span>;
-}
