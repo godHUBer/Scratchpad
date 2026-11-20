@@ -181,7 +181,16 @@ export function SelectedCardBox({
         cursor: eraseMode ? 'crosshair' : canWrite ? 'grab' : 'default',
       }}
       onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
+      // Erasing with a drag: a card is a DOM element, so the Konva intersection
+      // test in WorkspaceCanvas cannot see it. Hovering while the eraser is held
+      // down erases this card, matching the stroke behaviour on the canvas.
+      onPointerMove={(event) => {
+        onPointerMove(event);
+        if (eraseMode && event.buttons !== 0) onErase?.();
+      }}
+      onPointerEnter={(event) => {
+        if (eraseMode && event.buttons !== 0) onErase?.();
+      }}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
       data-card={item.id}

@@ -164,15 +164,15 @@ export function AddMediaLinkModal({ open, workspaceId, initialKind = 'image', as
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
             {parsed ? (
               <>
-                <span className="chip bg-mint">{parsed.providerLabel}</span>
+                <span className="chip chip-accent bg-mint">{parsed.providerLabel}</span>
                 {parsed.fileId ? <span className="chip">id {parsed.fileId.slice(0, 8)}…</span> : null}
-                <span className="chip bg-mustard">detected: {parsed.kind}</span>
+                <span className="chip chip-accent bg-mustard">detected: {parsed.kind}</span>
                 {parsed.needsManualType ? (
-                  <span className="chip bg-coral">pick the type manually</span>
+                  <span className="chip chip-accent bg-coral">pick the type manually</span>
                 ) : null}
               </>
             ) : url ? (
-              <span className="chip bg-coral">not a valid https link</span>
+              <span className="chip chip-accent bg-coral">not a valid https link</span>
             ) : (
               <span className="text-ink-soft">Drive links, mp4/mp3/png, YouTube, Vimeo…</span>
             )}

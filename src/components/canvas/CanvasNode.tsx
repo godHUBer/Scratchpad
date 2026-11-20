@@ -1,5 +1,7 @@
-import { Group, Line, Rect, Text } from 'react-konva';
+import Konva from 'konva';
+import { Ellipse, Group, Line, Rect, Text } from 'react-konva';
 import type { Bookmark, CanvasItem, MediaAsset } from '../../types';
+import { arrowPoints, asShape, polygonPoints } from '../../lib/shapes';
 import { BookmarkCardBody } from './BookmarkCardBody';
 import { MediaCardBody } from './MediaCardBody';
 
@@ -35,6 +37,78 @@ export function CanvasNode({
   fontFamily,
 }: CanvasNodeProps) {
   if (item.item_type === 'draw') {
+    /*
+      A shape is stored on the same `draw` type as a freehand stroke (see
+      src/lib/shapes.ts for why). The only difference is what `content` carries,
+      so the branch happens here rather than in the data model.
+    */
+    const shape = asShape(item.content);
+    if (shape) {
+      const { color, strokeWidth, filled } = shape;
+      const common = {
+        x: item.position_x,
+        y: item.position_y,
+        stroke: color,
+        strokeWidth,
+        listening: canInteract,
+        draggable: canInteract,
+        onDragStart: () => onDragStart?.(item.id),
+        onDragEnd: (event: Konva.KonvaEventObject<DragEvent>) =>
+          onDragEnd?.(item.id, event.target.x(), event.target.y()),
+        onClick: (event: Konva.KonvaEventObject<MouseEvent>) => {
+          event.cancelBubble = true;
+          onSelect(item.id, event.evt.shiftKey);
+        },
+        onTap: () => {
+          onSelect(item.id, false);
+        },
+        name: `item-${item.id}`,
+      } as const;
+
+      // Filled shapes get a translucent version of the stroke colour so the
+      // outline stays legible rather than being washed out by its own fill.
+      const fill = filled ? `${color}33` : undefined;
+
+      if (shape.shape === 'ellipse') {
+        return (
+          <Ellipse
+            {...common}
+            x={item.position_x + item.width / 2}
+            y={item.position_y + item.height / 2}
+            radiusX={item.width / 2}
+            radiusY={item.height / 2}
+            fill={fill}
+          />
+        );
+      }
+
+      if (shape.shape === 'arrow') {
+        return (
+          <Line
+            {...common}
+            points={arrowPoints(item.width, item.height)}
+            lineCap="round"
+            lineJoin="round"
+            // A thin arrow is hard to grab; widen the hit area without widening
+            // the stroke the user sees.
+            hitStrokeWidth={Math.max(20, strokeWidth + 12)}
+          />
+        );
+      }
+
+      const points = polygonPoints(shape.shape, item.width, item.height).flat();
+      return (
+        <Line
+          {...common}
+          points={points}
+          closed
+          lineJoin="round"
+          fill={fill}
+          hitStrokeWidth={Math.max(20, strokeWidth + 12)}
+        />
+      );
+    }
+
     return (
       <Line
         points={item.content.points ?? []}

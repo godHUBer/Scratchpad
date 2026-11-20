@@ -1,11 +1,26 @@
 @import 'tailwindcss';
 
-@theme {
-  --color-cream: #ffe9b8;
-  --color-cream-deep: #f8d98f;
-  --color-paper: #fffdf6;
-  --color-ink: #080808;
-  --color-ink-soft: #3a3833;
+@theme inline {
+  /*
+    Colours are indirect on purpose.
+
+    Every utility built from these (`bg-paper`, `text-ink`, `border-ink`, …)
+    resolves to `var(--c-*)`, and the actual values are set below per colour
+    scheme. That is what makes the dark theme a token swap instead of an edit to
+    each of the ~300 places a colour is used.
+
+    `--color-ink-fixed` is the exception: it never changes. It is the near-black
+    used for borders, shadows and text *on top of the accent colours*. The
+    accents stay bright in both themes, so flipping that to a light colour would
+    put white text on yellow.
+  */
+  --color-cream: var(--c-cream);
+  --color-cream-deep: var(--c-cream-deep);
+  --color-paper: var(--c-paper);
+  --color-paper-deep: var(--c-paper-deep);
+  --color-ink: var(--c-ink);
+  --color-ink-soft: var(--c-ink-soft);
+  --color-ink-fixed: #080808;
   --color-mustard: #f7c948;
   --color-mint: #7fd18b;
   --color-coral: #ff8a80;
@@ -13,8 +28,8 @@
   --color-lilac: #c9b6ff;
   --font-sans: 'Trebuchet MS', 'Segoe UI', 'Lucida Grande', system-ui, sans-serif;
   --radius-card: 18px;
-  --shadow-hard: 4px 4px 0 0 #080808;
-  --shadow-hard-sm: 3px 3px 0 0 #080808;
+  --shadow-hard: 4px 4px 0 0 var(--c-shadow);
+  --shadow-hard-sm: 3px 3px 0 0 var(--c-shadow);
 
   /* Real device margins. index.html sets viewport-fit=cover, so on a notched or
      gesture-bar phone the content can sit under the hardware without these. */
@@ -22,6 +37,48 @@
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
+}
+
+/*
+  Light palette.
+
+  These are the original values; the app has always looked like this, so nothing
+  changes for anyone who does not turn dark mode on.
+*/
+:root,
+:root[data-theme='light'] {
+  color-scheme: light;
+  --c-cream: #ffe9b8;
+  --c-cream-deep: #f8d98f;
+  --c-paper: #fffdf6;
+  --c-paper-deep: #f4ead2;
+  --c-ink: #080808;
+  --c-ink-soft: #3a3833;
+  --c-shadow: #080808;
+}
+
+/*
+  Dark palette.
+
+  The page background is exactly #8B735E, as specified. That colour sits in the
+  contrast trough: nothing at all reaches 4.5:1 against it, with black at 4.49
+  and white at 4.46. Rather than tweak the requested colour, the surfaces on top
+  of it are darkened to #4A3C30, which puts white text at 10.43:1. Text that sits
+  directly on the page background lands at ~4.4:1 — large and bold text is fine
+  there, and most content lives on a panel.
+
+  The accents (mustard, coral, …) keep their light values in both themes, which
+  is why text on them stays #080808: they are bright in either scheme.
+*/
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --c-cream: #8b735e;
+  --c-cream-deep: #6e5a48;
+  --c-paper: #4a3c30;
+  --c-paper-deep: #3b2f26;
+  --c-ink: #fffdf8;
+  --c-ink-soft: #e8dcc9;
+  --c-shadow: #241c15;
 }
 
 @layer base {
@@ -96,6 +153,18 @@
 
   ::selection {
     background: var(--color-mustard);
+    /* The accent stays bright in both themes, so selection text stays dark. */
+    color: var(--color-ink-fixed);
+  }
+
+  /*
+    The page grain is a white-noise SVG at 4.5% opacity. On cream it reads as
+    texture; over the brown dark background it would wash the colour out. It is
+    dropped in dark mode rather than tinted, because a second data-URI is more
+    bytes than the effect is worth.
+  */
+  :root[data-theme='dark'] body {
+    background-image: none;
   }
 }
 
@@ -148,12 +217,21 @@
     box-shadow: none;
   }
 
+  /*
+    Buttons that sit on an accent colour keep the near-black border and text.
+    The accent itself does not change between themes, so following `--color-ink`
+    here would draw a white border around a bright yellow button in dark mode.
+  */
   .btn-primary {
     background-color: var(--color-mustard);
+    border-color: var(--color-ink-fixed);
+    color: var(--color-ink-fixed);
   }
 
   .btn-danger {
     background-color: var(--color-coral);
+    border-color: var(--color-ink-fixed);
+    color: var(--color-ink-fixed);
   }
 
   .btn-ghost {
@@ -182,6 +260,12 @@
     font-weight: 700;
     font-size: 0.85rem;
     margin-bottom: 0.3rem;
+  }
+
+  /* A chip drawn on an accent colour: keep dark ink so it stays readable. */
+  .chip-accent {
+    border-color: var(--color-ink-fixed);
+    color: var(--color-ink-fixed);
   }
 
   .chip {

@@ -171,7 +171,7 @@ export function SyncPill({
         onClick={interactive ? onRetry : undefined}
         disabled={!interactive}
         title={`${detail}${conflicts > 0 ? ` · ${conflicts} remote update${conflicts === 1 ? '' : 's'} merged` : ''}`}
-        className={`chip min-h-8 ${className} ${interactive ? 'hover:bg-paper' : ''} ${
+        className={`chip chip-accent min-h-8 ${className} ${interactive ? 'hover:bg-paper' : ''} ${
           compact ? 'tap-sm min-w-11 justify-center px-1.5' : ''
         }`}
         aria-live="polite"
@@ -186,7 +186,7 @@ export function SyncPill({
         {compact ? null : label}
       </button>
       {conflicts > 0 ? (
-        <span className="chip min-h-8 bg-lilac" title="Remote edits were merged into your canvas">
+        <span className="chip chip-accent min-h-8 bg-lilac" title="Remote edits were merged into your canvas">
           {conflicts}
         </span>
       ) : null}

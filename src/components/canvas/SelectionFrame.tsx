@@ -1,15 +1,18 @@
 import { Circle, Group, Rect } from 'react-konva';
 import { handlePosition, handleCursor, RESIZE_HANDLES, type ResizeHandle } from './canvasMath';
 import type { CanvasItem } from '../../types';
+import type { ThemeColors } from '../../hooks/useThemeColors';
 
 interface SelectionFrameProps {
   item: CanvasItem;
   scale: number;
   canWrite: boolean;
+  /** Theme-aware colours: canvas chrome, not user content. */
+  colors: ThemeColors;
   onStartResize: (handle: ResizeHandle) => void;
 }
 
-export function SelectionFrame({ item, scale, canWrite, onStartResize }: SelectionFrameProps) {
+export function SelectionFrame({ item, scale, canWrite, colors, onStartResize }: SelectionFrameProps) {
   const rect = { x: item.position_x, y: item.position_y, width: item.width, height: item.height };
   const size = 9 / scale;
 
@@ -20,7 +23,7 @@ export function SelectionFrame({ item, scale, canWrite, onStartResize }: Selecti
         y={rect.y}
         width={rect.width}
         height={rect.height}
-        stroke="#080808"
+        stroke={colors.ink}
         strokeWidth={2 / scale}
         dash={[9 / scale, 6 / scale]}
         listening={false}
@@ -35,7 +38,7 @@ export function SelectionFrame({ item, scale, canWrite, onStartResize }: Selecti
                 y={y}
                 radius={size}
                 fill="#fffdf6"
-                stroke="#080808"
+                stroke={colors.ink}
                 strokeWidth={2 / scale}
                 onMouseEnter={(event) => {
                   const stage = event.target.getStage();

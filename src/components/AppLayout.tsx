@@ -7,6 +7,7 @@ import { CreateTeamModal } from './teams/CreateTeamModal';
 import { JoinTeamModal } from './teams/JoinTeamModal';
 import { useToast } from '../contexts/ToastContext';
 import { Icon } from './ui/Icon';
+import { ThemeToggle } from './ui/ThemeToggle';
 import { humanizeError } from '../lib/errors';
 
 /**
@@ -49,6 +50,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
           <span className="hidden text-xs font-bold text-ink-soft md:inline" title={profile?.display_name}>
             {profile?.display_name}
           </span>
+          <ThemeToggle />
           <button
             type="button"
             className="btn h-11 min-h-11 w-11 px-0"

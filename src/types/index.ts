@@ -65,6 +65,13 @@ export interface DrawContent {
   color?: string;
   strokeWidth?: number;
   z?: number;
+  /**
+   * Shapes share the `draw` item type rather than getting their own, because
+   * `canvas_items.item_type` is constrained by a CHECK and adding a value means
+   * a migration. See src/lib/shapes.ts. When present, `points` is absent.
+   */
+  shape?: 'rect' | 'ellipse' | 'triangle' | 'diamond' | 'arrow' | 'star';
+  filled?: boolean;
 }
 export interface CardContent {
   z?: number;
