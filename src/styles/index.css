@@ -36,11 +36,10 @@
   }
 
   /* 100dvh tracks the *visible* viewport, so the layout does not jump when
-     Safari's toolbars collapse and content is not pushed under them. The 100vh
-     fallback keeps older browsers working. */
-  /* Two separate declarations would be collapsed by the CSS minifier, which
-     drops the 100vh fallback; @supports keeps the fallback intact for browsers
-     that predate dvh. */
+     Safari's toolbars collapse and content is not pushed under them.
+     Written with @supports rather than two consecutive declarations: the CSS
+     minifier collapses those and drops the 100vh fallback, which would leave
+     older browsers with no height at all. */
   #root {
     min-height: 100vh;
   }
@@ -51,12 +50,9 @@
   }
 
   body {
+    margin: 0;
     /* Stop the whole page from rubber-banding; inner scrollers still work. */
     overscroll-behavior-y: none;
-  }
-
-  body {
-    margin: 0;
     background-color: var(--color-cream);
     color: var(--color-ink);
     font-family: var(--font-sans);
@@ -231,7 +227,8 @@
   }
 
   /* Dynamic viewport height, for full-height screens that must not sit under
-     mobile browser chrome. Pairs with the 100vh fallback for old browsers. */
+     mobile browser chrome. Same @supports trick as #root above, for the same
+     reason: the plain two-declaration fallback does not survive minification. */
   .h-dvh-screen {
     height: 100vh;
   }
