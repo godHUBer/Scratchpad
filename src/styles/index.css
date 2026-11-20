@@ -15,6 +15,13 @@
   --radius-card: 18px;
   --shadow-hard: 4px 4px 0 0 #080808;
   --shadow-hard-sm: 3px 3px 0 0 #080808;
+
+  /* Real device margins. index.html sets viewport-fit=cover, so on a notched or
+     gesture-bar phone the content can sit under the hardware without these. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
 }
 
 @layer base {
@@ -28,8 +35,24 @@
     height: 100%;
   }
 
+  /* 100dvh tracks the *visible* viewport, so the layout does not jump when
+     Safari's toolbars collapse and content is not pushed under them.
+     Written with @supports rather than two consecutive declarations: the CSS
+     minifier collapses those and drops the 100vh fallback, which would leave
+     older browsers with no height at all. */
+  #root {
+    min-height: 100vh;
+  }
+  @supports (min-height: 100dvh) {
+    #root {
+      min-height: 100dvh;
+    }
+  }
+
   body {
     margin: 0;
+    /* Stop the whole page from rubber-banding; inner scrollers still work. */
+    overscroll-behavior-y: none;
     background-color: var(--color-cream);
     color: var(--color-ink);
     font-family: var(--font-sans);
@@ -52,6 +75,23 @@
   :focus-visible {
     outline: 3px solid var(--color-ink);
     outline-offset: 2px;
+  }
+
+  /* iOS inflates text in landscape unless told not to, which breaks the
+     hand-drawn proportions. */
+  @media (max-width: 820px) {
+    html {
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
+    }
+  }
+
+  /* Coarse pointers get press feedback instead of hover feedback. */
+  @media (hover: none) {
+    .btn:hover:not(:disabled) {
+      transform: none;
+      box-shadow: var(--shadow-hard-sm);
+    }
   }
 
   ::selection {
@@ -185,11 +225,92 @@
   .no-scrollbar {
     scrollbar-width: none;
   }
+
+  /* Dynamic viewport height, for full-height screens that must not sit under
+     mobile browser chrome. Same @supports trick as #root above, for the same
+     reason: the plain two-declaration fallback does not survive minification. */
+  .h-dvh-screen {
+    height: 100vh;
+  }
+  .min-h-dvh-screen {
+    min-height: 100vh;
+  }
+  @supports (height: 100dvh) {
+    .h-dvh-screen {
+      height: 100dvh;
+    }
+    .min-h-dvh-screen {
+      min-height: 100dvh;
+    }
+  }
+
+  /*
+    Safe-area padding.
+
+    These ADD the inset to whatever padding the element already has. Writing
+    `padding-bottom: var(--safe-bottom)` here would silently erase `p-5` on a
+    phone with no notch (the inset is 0px), so each one composes with the
+    existing value instead.
+  */
+  .pb-safe {
+    padding-bottom: calc(1.25rem + var(--safe-bottom));
+  }
+  .pt-safe {
+    padding-top: calc(0.5rem + var(--safe-top));
+  }
+  .px-safe {
+    padding-left: calc(0.75rem + var(--safe-left));
+    padding-right: calc(0.75rem + var(--safe-right));
+  }
+  .mb-safe {
+    margin-bottom: var(--safe-bottom);
+  }
+  .inset-safe-bottom {
+    bottom: var(--safe-bottom);
+  }
+
+  /* Anything that scrolls *inside* the app shell must own its scrolling so the
+     page itself never scrolls and fights the canvas gestures. */
+  .app-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   * {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
+  }
+}
+
+/*
+  Touch target floor.
+
+  This deliberately sits OUTSIDE every @layer. `.btn` is declared in the
+  `components` layer, and a utility such as `min-h-7` lives in the `utilities`
+  layer, which always wins over `components` no matter the specificity. Putting
+  this rule inside the components layer therefore did nothing: 48 call sites
+  still rendered 28-40px tall buttons on a phone. Unlayered styles outrank all
+  layered ones, so this is the only placement that actually takes effect.
+
+  Only min-height is raised, so nothing shrinks and widths are untouched.
+*/
+@media (pointer: coarse) {
+  .btn {
+    min-height: 44px;
+  }
+  .btn.tap-sm {
+    min-width: 44px;
+  }
+  /* Dense icon-only controls that carry their own square sizing. */
+  .btn.h-7,
+  .btn.h-8,
+  .btn.h-9,
+  .btn.w-7,
+  .btn.w-8,
+  .btn.w-9 {
+    min-width: 44px;
+    min-height: 44px;
   }
 }

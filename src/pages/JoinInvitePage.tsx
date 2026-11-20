@@ -83,7 +83,7 @@ export function JoinInvitePage() {
     false; // server already hides mismatched email-bound invites; kept for clarity
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4 sm:p-8">
+    <div className="flex min-h-dvh-screen items-center justify-center p-4 sm:p-8">
       <div className="w-full max-w-xl">
         <Link to="/" className="mb-4 inline-flex items-center gap-2 rounded-xl px-2 py-1 font-black hover:bg-paper">
           <Icon name="bookmarkShelf" size={20} /> Scratchpad

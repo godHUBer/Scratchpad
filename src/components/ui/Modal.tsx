@@ -63,7 +63,7 @@ export function Modal({ open, onClose, title, description, children, footer, siz
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-0 sm:items-center sm:p-6"
+      className="h-dvh-screen fixed inset-x-0 top-0 z-50 flex items-end justify-center bg-ink/40 p-0 px-safe sm:items-center sm:p-6"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !busy) onClose();
@@ -74,9 +74,10 @@ export function Modal({ open, onClose, title, description, children, footer, siz
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`paper relative w-full ${SIZES[size]} max-h-[92vh] overflow-y-auto rounded-b-none p-5 sm:rounded-card sm:p-6`}
+        style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
+        className={`paper relative flex max-h-[92dvh] w-full ${SIZES[size]} flex-col rounded-b-none p-5 sm:max-h-[90vh] sm:rounded-card sm:p-6`}
       >
-        <div className="mb-4 flex items-start justify-between gap-4">
+        <div className="mb-4 flex shrink-0 items-start justify-between gap-4">
           <div>
             <h2 id={titleId} className="text-xl font-extrabold tracking-tight">
               {title}
@@ -92,8 +93,10 @@ export function Modal({ open, onClose, title, description, children, footer, siz
             <Icon name="close" size={18} />
           </button>
         </div>
-        <div className="space-y-4">{children}</div>
-        {footer ? <div className="mt-6 flex flex-wrap justify-end gap-2">{footer}</div> : null}
+        <div className="app-scroll -mx-1 min-h-0 flex-1 space-y-4 overflow-y-auto px-1">{children}</div>
+        {footer ? (
+          <div className="mt-4 flex shrink-0 flex-wrap justify-end gap-2 sm:mt-6">{footer}</div>
+        ) : null}
       </div>
     </div>,
     document.body,

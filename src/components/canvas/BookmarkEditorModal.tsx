@@ -191,7 +191,7 @@ export function BookmarkEditorModal({
                   onClick={() => setDraft({ ...draft, color })}
                   aria-label={`Colour ${color}`}
                   aria-pressed={draft.color === color}
-                  className={`h-7 w-7 rounded-full border-2 border-ink ${
+                  className={`h-7 w-7 rounded-full border-2 border-ink pointer-coarse:h-10 pointer-coarse:w-10 ${
                     draft.color === color ? 'ring-2 ring-ink ring-offset-1' : ''
                   }`}
                   style={{ backgroundColor: color }}

@@ -76,7 +76,7 @@ export function BookmarksPage() {
   if (workspaceLoading) {
     return (
       <div className="mx-auto max-w-5xl p-4">
-        <Skeleton className="h-10 w-64" />
+        <Skeleton className="h-10 w-full max-w-64" />
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2, 3, 4, 5].map((i) => (
             <Skeleton key={i} className="h-32 w-full" />

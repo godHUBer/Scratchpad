@@ -29,8 +29,10 @@ export function AppLayout({ children }: { children?: ReactNode }) {
   const navigate = useNavigate();
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b-[3px] border-ink bg-cream/95 px-3 py-2 backdrop-blur-[2px] sm:px-4">
+    <div className="flex h-dvh-screen flex-col overflow-hidden">
+      {/* pt-safe/px-safe replace px-3 py-2 rather than stacking on it: they
+          already include that padding plus the device inset. */}
+      <header className="pt-safe px-safe sticky top-0 z-30 flex shrink-0 items-center justify-between gap-3 border-b-[3px] border-ink bg-cream/95 py-2 backdrop-blur-[2px] sm:px-4">
         <div className="flex min-w-0 items-center gap-2">
           <Link to="/workspace" className="flex items-center gap-2 rounded-xl px-1 py-0.5 hover:bg-paper">
             <Icon name="bookmarkShelf" size={22} />
@@ -49,7 +51,7 @@ export function AppLayout({ children }: { children?: ReactNode }) {
           </span>
           <button
             type="button"
-            className="btn h-10 min-h-10 w-11 px-0"
+            className="btn h-11 min-h-11 w-11 px-0"
             aria-label="Open main navigation menu"
             aria-expanded={menuOpen}
             aria-controls="main-navigation"
@@ -64,7 +66,13 @@ export function AppLayout({ children }: { children?: ReactNode }) {
         </div>
       </header>
 
-      <main className="flex-1">
+      {/*
+        min-h-0 is load-bearing: without it a flex child refuses to shrink below
+        its content height, so the canvas scrolled the whole page instead of
+        filling the space. This is what lets WorkspacePage use h-full instead of
+        a hard-coded `calc(100vh - 61px)`.
+      */}
+      <main className="min-h-0 flex-1">
         <Outlet />
         {children}
       </main>

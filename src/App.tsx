@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react';
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
@@ -5,16 +6,28 @@ import { WorkspaceProvider } from './contexts/WorkspaceContext';
 import { Toaster } from './components/ui/Toaster';
 import { RequireAuth } from './components/RequireAuth';
 import { AppLayout } from './components/AppLayout';
-import { SignInPage } from './pages/SignInPage';
-import { ResetPasswordPage } from './pages/ResetPasswordPage';
-import { AdminPage } from './pages/AdminPage';
-import { WorkspacePage } from './pages/WorkspacePage';
-import { TeamsPage } from './pages/TeamsPage';
-import { InvitationsPage } from './pages/InvitationsPage';
-import { JoinInvitePage } from './pages/JoinInvitePage';
-import { BookmarksPage } from './pages/BookmarksPage';
-import { SettingsPage } from './pages/SettingsPage';
-import { NotFoundPage } from './pages/NotFoundPage';
+import { PageFallback } from './components/ui/PageFallback';
+
+/*
+  Routes are split. On a phone the whole app used to arrive as one ~300 kB
+  gzipped bundle, so signing in meant downloading Konva and the entire canvas
+  engine first. Each page now loads on demand; the canvas chunk is only
+  fetched when the workspace is actually opened.
+*/
+const SignInPage = lazy(() => import('./pages/SignInPage').then((m) => ({ default: m.SignInPage })));
+const ResetPasswordPage = lazy(() =>
+  import('./pages/ResetPasswordPage').then((m) => ({ default: m.ResetPasswordPage })),
+);
+const AdminPage = lazy(() => import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })));
+const WorkspacePage = lazy(() => import('./pages/WorkspacePage').then((m) => ({ default: m.WorkspacePage })));
+const TeamsPage = lazy(() => import('./pages/TeamsPage').then((m) => ({ default: m.TeamsPage })));
+const InvitationsPage = lazy(() =>
+  import('./pages/InvitationsPage').then((m) => ({ default: m.InvitationsPage })),
+);
+const JoinInvitePage = lazy(() => import('./pages/JoinInvitePage').then((m) => ({ default: m.JoinInvitePage })));
+const BookmarksPage = lazy(() => import('./pages/BookmarksPage').then((m) => ({ default: m.BookmarksPage })));
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })));
 
 export default function App() {
   return (
@@ -22,6 +35,7 @@ export default function App() {
       <AuthProvider>
         <WorkspaceProvider>
           <HashRouter>
+            <Suspense fallback={<PageFallback />}>
             <Routes>
               <Route path="/signin" element={<SignInPage />} />
               <Route path="/admin" element={<AdminPage />} />
@@ -45,6 +59,7 @@ export default function App() {
                 <Route path="*" element={<NotFoundPage />} />
               </Route>
             </Routes>
+            </Suspense>
           </HashRouter>
           <Toaster />
         </WorkspaceProvider>

@@ -8,6 +8,7 @@ import { SelectionFrame } from './SelectionFrame';
 import { SelectedCardBox, type Rect as CardRect } from './SelectedCardBox';
 import type { Tool } from './FloatingToolbar';
 import {
+  clampScale,
   fitViewport,
   itemRect,
   normalizeRect,
@@ -201,6 +202,82 @@ export function WorkspaceCanvas({
     const isPinch = event.evt.ctrlKey;
     const factor = isPinch ? 1 - event.evt.deltaY * 0.01 : 1 - event.evt.deltaY * 0.0015;
     setViewport((current) => zoomAtPoint(current, pointer, current.scale * clamp(factor, 0.5, 2)));
+  };
+
+  // ------------------------------------------------------------- touch gestures
+  //
+  // The canvas used to be single-pointer only: onTouchStart/Move did the same
+  // thing as a mouse drag. That leaves a phone user unable to zoom at all and
+  // unable to pan without picking the Pan tool, which makes the product close to
+  // unusable on a tablet or phone. A two-finger gesture is handled here and
+  // swallows the single-pointer path for its duration, so a pinch never also
+  // drags a card or paints a stroke.
+  const gesture = useRef<{
+    distance: number;
+    center: { x: number; y: number };
+    scale: number;
+    /** viewport when the pinch began — every frame is computed against this */
+    viewport: Viewport;
+  } | null>(null);
+
+  const touchPair = (event: Konva.KonvaEventObject<TouchEvent>) => {
+    const touches = event.evt.touches;
+    if (touches.length !== 2) return null;
+    const [a, b] = [touches[0]!, touches[1]!];
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    const toLocal = (t: Touch) => ({ x: t.clientX - rect.left, y: t.clientY - rect.top });
+    const pa = toLocal(a);
+    const pb = toLocal(b);
+    return {
+      distance: Math.hypot(pb.x - pa.x, pb.y - pa.y),
+      center: { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 },
+    };
+  };
+
+  const onTouchStartGesture = (event: Konva.KonvaEventObject<TouchEvent>) => {
+    const pair = touchPair(event);
+    if (!pair) return false;
+    // Abandon any single-pointer work in progress so a pinch cannot leave a
+    // half-drawn stroke or a stuck marquee behind.
+    setDraft(null);
+    marqueeStart.current = null;
+    setMarquee(null);
+    gesture.current = { distance: pair.distance, center: pair.center, scale: viewport.scale, viewport };
+    return true;
+  };
+
+  const onTouchMoveGesture = (event: Konva.KonvaEventObject<TouchEvent>): boolean => {
+    const active = gesture.current;
+    if (!active) return false;
+    const pair = touchPair(event);
+    if (!pair) return true; // a finger lifted; keep swallowing until both are gone
+
+    event.evt.preventDefault();
+
+    // Zoom about the midpoint of the fingers, then translate by how far that
+    // midpoint travelled: pinch and two-finger drag compose into one gesture.
+    //
+    // Every frame is computed from the gesture's *starting* viewport, never from
+    // the current one. Anchoring to the live viewport while also measuring the
+    // midpoint against its start position compounds the offset each frame: after
+    // a four-step pinch the content had slid ~27px away from the fingers. The
+    // tests in pinchGesture.test.ts pin this down.
+    const ratio = active.distance > 0 ? pair.distance / active.distance : 1;
+    const nextScale = clampScale(active.scale * ratio);
+    const zoomed = zoomAtPoint(active.viewport, active.center, nextScale);
+    setViewport({
+      ...zoomed,
+      x: zoomed.x + (pair.center.x - active.center.x),
+      y: zoomed.y + (pair.center.y - active.center.y),
+    });
+    return true;
+  };
+
+  const onTouchEndGesture = (event: Konva.KonvaEventObject<TouchEvent>): boolean => {
+    if (!gesture.current) return false;
+    if (event.evt.touches.length < 2) gesture.current = null;
+    return true;
   };
 
   // ------------------------------------------------------------- interactions
@@ -517,11 +594,20 @@ export function WorkspaceCanvas({
         y={viewport.y}
         onWheel={onWheel}
         onMouseDown={onMouseDown}
-        onTouchStart={onMouseDown}
-        onMouseMove={onMouseMove}
-        onTouchMove={onMouseMove}
-        onMouseUp={() => void onMouseUp()}
-        onTouchEnd={() => void onMouseUp()}
+        onTouchStart={(event) => {
+          // Two fingers mean pinch/pan; one finger behaves exactly as before.
+          if (!onTouchStartGesture(event)) onMouseDown(event);
+        }}
+        onTouchMove={(event) => {
+          if (!onTouchMoveGesture(event)) onMouseMove();
+        }}
+        onTouchEnd={(event) => {
+          if (!onTouchEndGesture(event)) void onMouseUp();
+        }}
+        onTouchCancel={(event) => {
+          onTouchEndGesture(event);
+          void onMouseUp();
+        }}
         onDblClick={onBackgroundDoubleClick}
         draggable={tool === 'pan' || panning.current !== null}
         onDragStart={() => {

@@ -55,7 +55,7 @@ export function NavigationSidebar({ open, onClose, onOpenCreateTeam, onJoinPromp
     <>
       <div className="fixed inset-0 z-40 bg-ink/35" onClick={onClose} role="presentation" />
       <aside
-        className="fixed right-0 top-0 z-50 flex h-full w-[86vw] max-w-sm flex-col overflow-hidden border-l-[3px] border-ink bg-paper"
+        className="h-dvh-screen pt-safe pb-safe px-safe fixed right-0 top-0 z-50 flex w-[86vw] max-w-sm flex-col overflow-hidden border-l-[3px] border-ink bg-paper"
         aria-label="Main navigation"
       >
         <div className="flex items-center justify-between border-b-[3px] border-ink px-4 py-3">
@@ -63,12 +63,12 @@ export function NavigationSidebar({ open, onClose, onOpenCreateTeam, onJoinPromp
             <Icon name="bookmarkShelf" size={22} />
             <span className="text-lg font-black tracking-tight">Scratchpad</span>
           </div>
-          <button type="button" className="btn min-h-9 w-9 px-0" onClick={onClose} aria-label="Close menu">
+          <button type="button" className="btn tap-sm min-h-11 w-11 px-0" onClick={onClose} aria-label="Close menu">
             <Icon name="close" size={18} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-4">
+        <div className="app-scroll flex-1 overflow-y-auto px-4 py-4">
           <div className="mb-4 flex items-center gap-3 rounded-2xl border-[3px] border-ink bg-cream p-3">
             <Avatar name={profile?.display_name} url={profile?.avatar_url} size={40} />
             <div className="min-w-0">

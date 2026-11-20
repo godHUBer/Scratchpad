@@ -58,7 +58,7 @@ export function AdminPage() {
   // ---- gate -------------------------------------------------------------
   if (!admin.session) {
     return (
-      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center p-4">
+      <div className="mx-auto flex min-h-dvh-screen w-full max-w-md flex-col justify-center p-4">
         <div className="paper p-5">
           <div className="mb-3 flex items-center gap-2">
             <Icon name="settings" size={24} />
@@ -241,7 +241,23 @@ export function AdminPage() {
             </button>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* A 44rem table cannot fit a phone. It scrolls, but a horizontal
+              scroller with no cue looks like a clipped table, so the edge
+              shadow and the hint line below make the overflow discoverable. */}
+          <p className="mb-1 text-[11px] font-bold text-ink-soft sm:hidden">Swipe the table sideways for more →</p>
+          <div
+            className="app-scroll overflow-x-auto pb-1"
+            style={{
+              backgroundImage:
+                'linear-gradient(to right, transparent 92%, rgba(8,8,8,0.12)), linear-gradient(to left, transparent 92%, rgba(8,8,8,0.12))',
+              backgroundPosition: 'right center, left center',
+              backgroundRepeat: 'no-repeat',
+              backgroundSize: '24px 100%, 24px 100%',
+            }}
+            role="region"
+            aria-label="Registered accounts"
+            tabIndex={0}
+          >
           <table className="w-full min-w-[44rem] border-collapse text-sm">
             <thead>
               <tr className="border-b-[3px] border-ink text-left text-xs uppercase tracking-wide">
@@ -317,7 +333,9 @@ export function AdminPage() {
       ) : null}
 
       {tab === 'workspaces' ? (
-        <section className="paper overflow-x-auto p-3">
+        <section className="paper p-3">
+          <p className="mb-1 text-[11px] font-bold text-ink-soft sm:hidden">Swipe the table sideways for more →</p>
+          <div className="app-scroll overflow-x-auto pb-1" role="region" aria-label="Workspaces" tabIndex={0}>
           <table className="w-full min-w-[40rem] border-collapse text-sm">
             <thead>
               <tr className="border-b-[3px] border-ink text-left text-xs uppercase tracking-wide">
@@ -357,6 +375,7 @@ export function AdminPage() {
               ) : null}
             </tbody>
           </table>
+          </div>
         </section>
       ) : null}
 
