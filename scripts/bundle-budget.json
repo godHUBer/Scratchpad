@@ -1,0 +1,8 @@
+{
+  "$schema": "Budget in gzipped kB. Regenerate with --update.",
+  "maxGzipKb": {
+    "entry": 160,
+    "total": 335,
+    "single": 160
+  }
+}
