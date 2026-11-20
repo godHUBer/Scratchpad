@@ -9,6 +9,7 @@ import {
   serializeFonts,
   type ImportedFont,
 } from '../../lib/fonts';
+import { writeString } from '../../lib/storage';
 
 /**
  * Font chooser for text and note items.
@@ -40,27 +41,33 @@ function ensureFontLoaded(font: ImportedFont): void {
   document.head.appendChild(link);
 }
 
+/** localStorage, or null when the browser refuses to expose it. */
+function safeStorage(): Storage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
 function useImportedFonts() {
   const [fonts, setFonts] = useState<ImportedFont[]>([]);
 
   useEffect(() => {
-    const stored = readImportedFonts(window.localStorage);
+    const stored = readImportedFonts(safeStorage());
     setFonts(stored);
     for (const font of stored) ensureFontLoaded(font);
   }, []);
 
   const persist = (next: ImportedFont[]) => {
     setFonts(next);
-    try {
-      window.localStorage.setItem(FONTS_STORAGE_KEY, serializeFonts(next));
-    } catch {
-      // storage full / disabled: the font still works for this session
-    }
+    // Best-effort: a font that cannot be remembered still works this session.
+    writeString(FONTS_STORAGE_KEY, serializeFonts(next));
   };
 
   const add = (font: ImportedFont) => {
     ensureFontLoaded(font);
-    persist([...readImportedFonts(window.localStorage), font]);
+    persist([...readImportedFonts(safeStorage()), font]);
   };
 
   const remove = (family: string) => {

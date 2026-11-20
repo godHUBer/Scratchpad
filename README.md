@@ -282,6 +282,39 @@ Important, honest limitations:
 
 ---
 
+## 4.4 The icon set
+
+All UI glyphs come from `src/components/ui/Icon.tsx`: one `<path>` per icon in a
+24×24 box, 2.4 stroke, round caps, `stroke="currentColor"` so the same icon sits
+on mustard, mint, coral or paper without a second copy.
+
+Never use emoji as an icon. Emoji depend on a colour-emoji font, which stripped
+Linux/Windows images and many kiosk browsers do not ship — every glyph becomes a
+tofu box `▯` and the toolbar looks blank. This actually shipped once.
+
+Drawing rules, and the reason each exists:
+
+| Rule | Why |
+|---|---|
+| Stay inside 0–24 with ~1.5 px margin | the toolbar button is rounded; edge-to-edge glyphs were clipped |
+| Must survive **14 px** | ten call sites render at 14 px (chips, table rows, toasts). Detail under ~2 px disappears |
+| Be distinct from its *neighbours* | `text` sits next to `brush`, `undo` next to `reset`, `close` next to `plus`. Each new glyph is drawn at 14/22/34 and compared in a row |
+| One `<path>` | the component renders one element; extra strokes are sub-paths (`M…Z M…Z`) |
+
+Checking a change:
+
+```
+npm run test -- src/components/ui/Icon.test.tsx   # structure, names, no duplicates
+node scripts/qa/icon-sheet.mjs                    # real getBBox() in Chromium
+```
+
+`icon-sheet.mjs` fails the build if any glyph leaves the viewBox (it would be
+clipped), if two glyphs have byte-identical geometry, and writes a contact sheet
+to `/tmp/icons-sheet.png` showing every icon at 14, 22 and 34 px. Resemblance is
+a judgement call and needs eyes; the script deliberately does not try to guess.
+
+---
+
 ## 5a. Text, fonts and importing a font
 
 Canvas text items store `content.fontFamily` as a plain CSS stack. Eight faces are
@@ -440,4 +473,6 @@ Things that can only be verified in a real browser with real accounts:
 | Image card is an empty white box | the DOM overlay returned `null` for images while the shell painted an opaque background over the Konva bitmap | fixed: images render a real `<img>`; the shell is transparent for image cards |
 | Drive audio is a black rectangle | `download?export=download` returns an attachment, so the player always failed, then the iframe covered the card | fixed: Drive audio goes straight to the preview iframe on a cream background with its file name and an Open link |
 | Media modal always says "Image" | the clicked kind was never passed to the dialog | fixed: the toolbar button seeds `initialKind` |
-| Emoji boxes (▯) in the media-type buttons | emoji glyphs depend on a colour-emoji font | replaced with the inline SVG icon set |
+| Emoji boxes (▯) in the media-type buttons | emoji glyphs depend on a colour-emoji font | replaced with the inline SVG icon set; never reintroduce emoji in UI |
+| Nothing renders / blank toolbar | the icon files ran to the edge of the viewBox and the rounded button clipped them | fixed: 1.5 px margin, enforced by `scripts/qa/icon-sheet.mjs` |
+| App dies on click in Safari private mode | `localStorage.setItem` throws when storage is blocked, and the call sat inside a context callback | fixed: all access goes through `src/lib/storage.ts`, which never throws |
