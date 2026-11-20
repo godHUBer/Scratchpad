@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, 'arena/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build (GitHub Pages base path)
+        run: npm run build
+        env:
+          # Optional overrides. When a repository variable is unset it expands to
+          # an empty string and Vite would inline "" over .env.production, so
+          # only pass through the ones that are actually set.
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+
+      - name: The bundle must contain a real Supabase configuration
+        # A build with an empty URL renders the "not configured" screen on the
+        # live site. Catch it on the PR, not after it deploys.
+        env:
+          EXPECTED_URL: ${{ vars.VITE_SUPABASE_URL }}
+        run: |
+          if [ -n "$EXPECTED_URL" ]; then
+            host=$(printf '%s' "$EXPECTED_URL" | sed -E 's#^https?://##; s#/+$##')
+          else
+            host=$(grep -E '^VITE_SUPABASE_URL=' .env.production | head -1 | cut -d= -f2- | sed -E 's#^https?://##; s#/+$##')
+          fi
+          if [ -z "$host" ]; then
+            echo "::error::No Supabase URL found in the environment or .env.production."
+            exit 1
+          fi
+          echo "expecting host: $host"
+          if ! grep -rqF "$host" dist/assets/*.js; then
+            echo "::error::The built bundle does not contain $host."
+            exit 1
+          fi
+          if ! grep -rqE 'sb_publishable_|eyJhbGciOi' dist/assets/*.js; then
+            echo "::error::No publishable key found in the built bundle."
+            exit 1
+          fi
+          echo "configuration present in bundle"
+
+  database:
+    # Apply every migration to a real PostgreSQL and call the RPCs. The app's
+    # own tests never touch a database, so this is the only thing that would
+    # have caught admin_list_users selecting a column from a missing FROM clause.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install the embedded PostgreSQL runner
+        run: python -m pip install pgserver
+
+      - name: Migrations and RPC assertions
+        run: python supabase/tests/run_sql_tests.py
