@@ -11,6 +11,7 @@ import { supabase } from '../integrations/supabase/client';
 import { useAuth } from './AuthContext';
 import { useToast } from './ToastContext';
 import { humanizeError } from '../lib/errors';
+import { readJson, readString, writeJson, writeString } from '../lib/storage';
 import type {
   Invitation,
   InvitationPreview,
@@ -62,13 +63,11 @@ interface WorkspaceContextValue {
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
 function readRecent(): string[] {
-  try {
-    const raw = localStorage.getItem(RECENT_KEY);
-    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
-    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
-  } catch {
-    return [];
-  }
+  // Storage can throw (private mode, blocked third-party storage, quota). The
+  // recent list is a convenience, so a failure must not break the workspace.
+  return readJson(RECENT_KEY, [], (v): v is string[] => Array.isArray(v)).filter(
+    (x): x is string => typeof x === 'string',
+  );
 }
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
@@ -135,7 +134,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
       setActiveId((current) => {
         if (current && list.some((w) => w.id === current)) return current;
-        const stored = localStorage.getItem(ACTIVE_KEY);
+        const stored = readString(ACTIVE_KEY);
         if (stored && list.some((w) => w.id === stored)) return stored;
         const personal = list.find((w) => w.type === 'personal');
         return personal?.id ?? list[0]?.id ?? null;
@@ -155,10 +154,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const setActiveWorkspace = useCallback((id: string | null) => {
     setActiveId(id);
     if (id) {
-      localStorage.setItem(ACTIVE_KEY, id);
+      writeString(ACTIVE_KEY, id);
       setRecentWorkspaceIds((prev) => {
         const next = [id, ...prev.filter((x) => x !== id)].slice(0, 8);
-        localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+        writeJson(RECENT_KEY, next);
         return next;
       });
     }
