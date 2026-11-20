@@ -29,6 +29,14 @@ const session = {
 const profile = { id: uid, display_name: 'QA Robot', avatar_url: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
 const workspace = { id: wsId, name: 'Personal', type: 'personal', owner_id: uid, description: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
 
+// Two teams: the "I created a second team and cannot open the first" report
+// only reproduces with more than one, because the bug was that clicking a team
+// updated the URL but the page never read it back.
+const teamA = { id: '22222222-2222-2222-2222-222222222222', name: 'Team Alpha', type: 'team', owner_id: uid,
+  description: 'First team', created_at: new Date(Date.now() - 7200e3).toISOString(), updated_at: new Date().toISOString() };
+const teamB = { id: '33333333-3333-3333-3333-333333333333', name: 'Team Beta', type: 'team', owner_id: uid,
+  description: 'Second team', created_at: new Date(Date.now() - 3600e3).toISOString(), updated_at: new Date().toISOString() };
+
 /**
  * Seed rows. `?seed=cards` gives the QA harness something to drag, so the
  * image/audio card fixes can be checked in a real browser instead of only in
@@ -56,7 +64,7 @@ const seededMedia = [
 const retentionPolicy = { cold_after_days: 60, trash_after_days: 90, purge_after_days: 100, enabled: false, updated_at: new Date().toISOString() };
 
 const canvasItems = [];
-const store = { items: canvasItems, seed: false, retention: retentionPolicy, trash: [] };
+const store = { items: canvasItems, seed: false, teams: false, retention: retentionPolicy, trash: [], invitations: [] };
 
 /** Playwright route handler: (route) => void */
 export async function handle(route) {
@@ -100,6 +108,46 @@ export async function handle(route) {
       return reply(row ?? null);
     }
     if (fn === 'delete_workspace' || fn === 'delete_team') return reply(null);
+    if (fn === 'get_or_create_team_invite_link') {
+      const body = JSON.parse(request.postData() || '{}');
+      const token = 'tok-' + Math.random().toString(36).slice(2, 12);
+      store.invitations.push({
+        id: crypto.randomUUID(), workspace_id: body.p_workspace_id,
+        invited_by: uid, invitee_email: null, invitee_user_id: null,
+        invitee_role: body.p_role ?? 'editor', status: 'pending',
+        expires_at: new Date(Date.now() + 7 * 864e5).toISOString(),
+        accepted_by: null, accepted_at: null, created_at: new Date().toISOString(),
+        token_hash: 'x'.repeat(64), invitee_display_name: null, invited_by_name: 'QA Robot',
+      });
+      const row = store.invitations[store.invitations.length - 1];
+      return reply([{ invitation_id: row.id, token, expires_at: row.expires_at, role_offered: row.invitee_role }]);
+    }
+    if (fn === 'reissue_invitation_token') {
+      const body = JSON.parse(request.postData() || '{}');
+      const inv = store.invitations.find((i) => i.id === body.p_invitation_id);
+      return reply([{ token: 'tok-' + Math.random().toString(36).slice(2, 12), expires_at: inv?.expires_at ?? new Date().toISOString() }]);
+    }
+    if (fn === 'set_member_role' || fn === 'remove_member' || fn === 'transfer_ownership') return reply(null);
+    if (fn === 'create_invitation') {
+      const body = JSON.parse(request.postData() || '{}');
+      const token = 'tok-' + Math.random().toString(36).slice(2, 12);
+      const inv = {
+        id: crypto.randomUUID(), workspace_id: body.p_workspace_id,
+        invited_by: uid, invitee_email: body.p_invitee_email ?? null,
+        invitee_user_id: null, invitee_role: body.p_role ?? 'editor',
+        status: 'pending', expires_at: new Date(Date.now() + 7 * 864e5).toISOString(),
+        accepted_by: null, accepted_at: null, created_at: new Date().toISOString(),
+        token_hash: 'x'.repeat(64), invitee_display_name: null, invited_by_name: 'QA Robot',
+      };
+      store.invitations.push(inv);
+      return reply([{ invitation_id: inv.id, token, expires_at: inv.expires_at }]);
+    }
+    if (fn === 'respond_to_invitation') {
+      const body = JSON.parse(request.postData() || '{}');
+      const inv = store.invitations.find((i) => i.id === body.p_invitation_id);
+      if (inv) inv.status = body.p_action === 'revoke' ? 'revoked' : body.p_action;
+      return reply(inv ?? null);
+    }
     if (fn === 'create_canvas_item') {
       const body = JSON.parse(request.postData() || '{}');
       const item = {
@@ -144,13 +192,20 @@ export async function handle(route) {
   }
 
   if (path === '/rest/v1/workspace_members') {
-    const wantMembers = url.search.includes('select=*') || url.search.includes('select=user_id');
-    if (wantMembers) {
-      return reply([{ id: 'member-1', workspace_id: wsId, user_id: uid, role: 'owner', joined_at: new Date().toISOString() }]);
+    // A bare select in refresh() asks only for workspace_id/role and then counts
+    // rows per workspace, so the shape matters: the count drives the member chip.
+    const all = store.teams
+      ? [workspace, teamA, teamB]
+      : [workspace];
+    if (url.search.includes('select=*')) {
+      const ws = url.search.match(/workspace_id=eq\.([0-9a-f-]+)/)?.[1] ?? wsId;
+      return reply([{ id: `member-${ws.slice(0, 8)}`, workspace_id: ws, user_id: uid, role: 'owner', joined_at: new Date().toISOString() }]);
     }
-    return reply([{ workspace_id: wsId, role: 'owner' }]);
+    return reply(all.map((w) => ({ workspace_id: w.id, role: 'owner' })));
   }
-  if (path === '/rest/v1/workspaces') return reply([workspace]);
+  if (path === '/rest/v1/workspaces') {
+    return reply(store.teams ? [workspace, teamA, teamB] : [workspace]);
+  }
   if (path === '/rest/v1/profiles') {
     if (url.search.includes('id=in.')) return reply([profile]);
     return reply(profile);
@@ -158,7 +213,7 @@ export async function handle(route) {
   if (path === '/rest/v1/canvas_items') return reply(store.seed ? seededItems : store.items);
   if (path === '/rest/v1/bookmarks') return reply([]);
   if (path === '/rest/v1/media_assets') return reply(store.seed ? seededMedia : []);
-  if (path === '/rest/v1/invitations_safe') return reply([]);
+  if (path === '/rest/v1/invitations_safe') return reply(store.invitations);
   return reply([]);
 }
 
