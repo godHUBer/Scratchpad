@@ -185,10 +185,11 @@ export function useAdminConsole() {
   }, [call]);
 
   // Load on first sign-in, then keep the online dot honest without a reload.
+  // 15 s keeps "online now" believable against a 2-minute presence window.
   useEffect(() => {
     if (!session) return;
     void refresh();
-    const id = window.setInterval(() => void refresh(), 30_000);
+    const id = window.setInterval(() => void refresh(), 15_000);
     return () => window.clearInterval(id);
   }, [session, refresh]);
 

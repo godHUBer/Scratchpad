@@ -87,7 +87,11 @@ create or replace function public.heartbeat()
 returns void language sql security definer
 set search_path = pg_catalog, public
 as $$
-  update public.profiles set last_seen_at = now() where id = auth.uid();
+  -- Upsert, not update: a missing profile row would make a plain UPDATE match
+  -- nothing and still report success, leaving the user permanently "offline".
+  insert into public.profiles (id, last_seen_at)
+  values (auth.uid(), now())
+  on conflict (id) do update set last_seen_at = now();
 $$;
 
 -- ---------------------------------------------------------------------------
@@ -240,10 +244,10 @@ begin
     coalesce(p.display_name, '(no profile)'),
     u.created_at,
     u.last_sign_in_at,
-    p.last_seen_at,
+    v.derived_seen,
     -- "online" = heartbeat inside the last 2 minutes. The app sends one every
     -- 60s while a tab is open, so this survives one missed beat.
-    coalesce(p.last_seen_at > now() - interval '2 minutes', false),
+    coalesce(v.derived_seen > now() - interval '2 minutes', false),
     (select count(*) from public.workspace_members m where m.user_id = u.id),
     (select count(*) from public.canvas_items c where c.created_by = u.id)
   from auth.users u
