@@ -133,6 +133,19 @@ The migrations cover the schema, workspace and content RPCs, invitations, RLS, R
 | `npm test` | Run the Vitest suite |
 | `npm run test:watch` | Run Vitest in watch mode |
 
+### Database tests
+
+The SQL test runner starts a disposable embedded PostgreSQL, applies all migrations, and runs the assertions in `supabase/tests/sql/`. To run it locally with Python 3:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install pgserver
+python supabase/tests/run_sql_tests.py
+```
+
+It uses Supabase and pgcrypto compatibility shims; the latter is **not real bcrypt**. The current SQL tests focus on admin RPCs and grants, not a complete RLS or collaboration test matrix. Validate security and integration behavior against a real Supabase project too.
+
 For the optional browser QA harness and its setup, see [`scripts/qa/README.md`](scripts/qa/README.md). It uses a network stub and is not a substitute for database authorization tests.
 
 ## Deploy
@@ -141,7 +154,7 @@ The checked-in [Pages workflow](.github/workflows/deploy.yml) builds and deploys
 
 For your own project, set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` as repository variables, and configure the deployed URL in Supabase Auth. **The current deploy workflow's bundle check is hard-coded to this repository's Supabase hostname**; update that check for your project before deploying an override. Review the base path too if deploying a user/organization site rather than a project site.
 
-A separate PR CI workflow is provided at [`deployment/workflows/ci.yml`](deployment/workflows/ci.yml), but is not active until installed under `.github/workflows/`. The supplied `scripts/install-workflows.sh` copies both workflow templates into place; review them before running it because it overwrites the installed deploy workflow. Creating or changing GitHub workflow files may require additional repository permissions.
+A separate PR CI workflow is provided at [`deployment/workflows/ci.yml`](deployment/workflows/ci.yml), but is not active until installed under `.github/workflows/`. It runs application checks and the SQL test runner. See [`docs/INSTALL_CI.md`](docs/INSTALL_CI.md) for installation instructions. The supplied `scripts/install-workflows.sh` copies both workflow templates into place; review them before running it because it overwrites the installed deploy workflow. Creating or changing GitHub workflow files may require additional repository permissions.
 
 For a manual build:
 
@@ -164,6 +177,7 @@ src/
   pages/            Application routes
   types/            Domain and database types
 supabase/migrations/  Database schema, RLS, RPCs, and Realtime setup
+supabase/tests/       PostgreSQL migration and admin RPC test harness
 .github/workflows/    Active GitHub Actions workflows
 deployment/workflows/ Workflow templates, including optional PR CI
 scripts/qa/            Optional browser QA harness
@@ -175,7 +189,7 @@ Content reads are scoped by workspace membership through RLS; content mutations 
 
 The separate `/#/admin` console uses a server-side key, not a normal user login. An operator can configure or rotate it through a privileged SQL session with `public.admin_set_key(...)`; never place the real key in source control or a browser environment variable. Rotation revokes admin sessions. The browser receives an expiring session token, which can perform sensitive operations including password resets and deletion. Protect the key and browser session accordingly.
 
-The current login limit is global: five failed attempts within 15 minutes temporarily lock out all administrators. The current `admin_list_users` SQL also references an undefined alias and needs correction before the user list can reliably load. Review and test the admin migration before relying on the console in production.
+The current login limit is global: five failed attempts within 15 minutes temporarily lock out all administrators. The checked-in admin migration fixes an earlier `admin_list_users` query error. Projects that already applied the old migration need an explicit database update; replaying edited migration files is not automatic. Review and test the admin migration before relying on the console in production.
 
 ## Troubleshooting
 
@@ -195,7 +209,7 @@ The current login limit is global: five failed attempts within 15 minutes tempor
 - Media is linked, not uploaded; third-party availability and permissions still apply.
 - Collaboration syncs objects, not live brush strokes. Undo is local and object rotation is not implemented.
 - Large workspaces may exceed the API's response row limit; canvas reads currently do not paginate.
-- The test suite does not currently exercise the SQL/RLS against a real database. Validate migrations, permissions, backups, and recovery procedures before production use.
+- The embedded PostgreSQL suite covers migrations and admin RPCs, but is not a comprehensive RLS or live Supabase test. Validate permissions, backups, and recovery procedures before production use.
 
 ---
 

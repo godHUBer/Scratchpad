@@ -3,8 +3,9 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { freshChannel, isChannelRetired, supabase, teardownChannel } from '../integrations/supabase/client';
 import { humanizeError } from '../lib/errors';
 import type { Bookmark, CanvasContent, CanvasItem, CanvasItemType, MediaAsset } from '../types';
+import { settleSyncState, type SyncState } from '../lib/syncStatus';
 
-export type SyncState = 'idle' | 'saving' | 'saved' | 'error' | 'offline';
+export type { SyncState };
 
 export interface NewCanvasItem {
   item_type: CanvasItemType;
@@ -49,6 +50,8 @@ export function useCanvasItems({ workspaceId, canWrite, onRemoteChange }: UseCan
   const itemsRef = useRef<CanvasItem[]>([]);
   itemsRef.current = items;
   const pendingWrites = useRef(0);
+  /** Writes that failed since the last clean save; keeps the badge honest. */
+  const failedWrites = useRef(0);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const remoteCallback = useRef(onRemoteChange);
   remoteCallback.current = onRemoteChange;
@@ -196,16 +199,29 @@ export function useCanvasItems({ workspaceId, canWrite, onRemoteChange }: UseCan
     setSync('saving');
     try {
       const result = await work();
+      // A success means local state and the database agree again (failed
+      // mutations are rolled back), so the badge may honestly say "saved".
+      failedWrites.current = 0;
       setLastSavedAt(new Date());
       return result;
     } catch (err) {
+      // Stay in 'error' until a later write succeeds. This used to be
+      // overwritten by the finally block below, so a failed save reported
+      // "saved" a moment later and the user trusted data that never landed.
+      failedWrites.current += 1;
       setSync('error');
       throw err;
     } finally {
       pendingWrites.current = Math.max(0, pendingWrites.current - 1);
-      if (pendingWrites.current === 0) {
-        setSync(navigator.onLine ? 'saved' : 'offline');
-      }
+      setSync((current) => {
+        const settled = settleSyncState({
+          pending: pendingWrites.current,
+          failed: failedWrites.current,
+          online: navigator.onLine,
+          previous: current,
+        });
+        return settled ?? current;
+      });
     }
   }, []);
 
@@ -246,21 +262,28 @@ export function useCanvasItems({ workspaceId, canWrite, onRemoteChange }: UseCan
       // optimistic local update so dragging feels instant
       setItems((list) => list.map((item) => (item.id === id ? { ...item, ...patch } : item)));
 
-      return track(async () => {
-        const { data, error: rpcError } = await supabase.rpc('update_canvas_item', {
-          p_item_id: id,
-          p_expected_version: current.version,
-          p_patch: patch as never,
+      try {
+        return await track(async () => {
+          const { data, error: rpcError } = await supabase.rpc('update_canvas_item', {
+            p_item_id: id,
+            p_expected_version: current.version,
+            p_patch: patch as never,
+          });
+          if (rpcError) throw new Error(humanizeError(rpcError));
+          const row = asCanvasItem(data as Record<string, unknown>);
+          if (row.version > current.version + 1) {
+            // someone else wrote in between: adopt their row instead of clobbering
+            setConflicts((n) => n + 1);
+          }
+          setItems((list) => list.map((item) => (item.id === id ? row : item)));
+          return row;
         });
-        if (rpcError) throw new Error(humanizeError(rpcError));
-        const row = asCanvasItem(data as Record<string, unknown>);
-        if (row.version > current.version + 1) {
-          // someone else wrote in between: adopt their row instead of clobbering
-          setConflicts((n) => n + 1);
-        }
-        setItems((list) => list.map((item) => (item.id === id ? row : item)));
-        return row;
-      });
+      } catch (err) {
+        // The write was rejected, so the optimistic patch is a lie. Put the row
+        // back exactly as the database last described it.
+        setItems((list) => list.map((item) => (item.id === id ? current : item)));
+        throw err;
+      }
     },
     [canWrite, track],
   );
@@ -270,6 +293,8 @@ export function useCanvasItems({ workspaceId, canWrite, onRemoteChange }: UseCan
       moves: Array<{ id: string; x: number; y: number; w?: number; h?: number }>,
     ): Promise<void> => {
       if (!canWrite || moves.length === 0) return;
+      // Remember the rows exactly as they were, so a rejection can restore them.
+      const before = itemsRef.current.filter((item) => moves.some((m) => m.id === item.id));
       setItems((list) =>
         list.map((item) => {
           const move = moves.find((m) => m.id === item.id);
@@ -283,17 +308,22 @@ export function useCanvasItems({ workspaceId, canWrite, onRemoteChange }: UseCan
           };
         }),
       );
-      await track(async () => {
-        const { data, error: rpcError } = await supabase.rpc('move_canvas_items', {
-          p_item_ids: moves.map((m) => m.id),
-          p_moves: moves.map((m) => ({ id: m.id, x: Math.round(m.x), y: Math.round(m.y), w: m.w, h: m.h })) as never,
+      try {
+        await track(async () => {
+          const { data, error: rpcError } = await supabase.rpc('move_canvas_items', {
+            p_item_ids: moves.map((m) => m.id),
+            p_moves: moves.map((m) => ({ id: m.id, x: Math.round(m.x), y: Math.round(m.y), w: m.w, h: m.h })) as never,
+          });
+          if (rpcError) throw new Error(humanizeError(rpcError));
+          const rows = (data ?? []).map((row) => asCanvasItem(row as Record<string, unknown>));
+          setItems((list) =>
+            list.map((item) => rows.find((row) => row.id === item.id) ?? item),
+          );
         });
-        if (rpcError) throw new Error(humanizeError(rpcError));
-        const rows = (data ?? []).map((row) => asCanvasItem(row as Record<string, unknown>));
-        setItems((list) =>
-          list.map((item) => rows.find((row) => row.id === item.id) ?? item),
-        );
-      });
+      } catch (err) {
+        setItems((list) => list.map((item) => before.find((old) => old.id === item.id) ?? item));
+        throw err;
+      }
     },
     [canWrite, track],
   );
@@ -301,11 +331,20 @@ export function useCanvasItems({ workspaceId, canWrite, onRemoteChange }: UseCan
   const deleteItem = useCallback(
     async (id: string): Promise<void> => {
       if (!canWrite) throw new Error('Viewers cannot modify this workspace.');
+      // Keep the row (and its position) so a rejected delete can put it back.
+      const removed = itemsRef.current.find((item) => item.id === id);
       setItems((list) => list.filter((item) => item.id !== id));
-      await track(async () => {
-        const { error: rpcError } = await supabase.rpc('delete_canvas_item', { p_item_id: id });
-        if (rpcError) throw new Error(humanizeError(rpcError));
-      });
+      try {
+        await track(async () => {
+          const { error: rpcError } = await supabase.rpc('delete_canvas_item', { p_item_id: id });
+          if (rpcError) throw new Error(humanizeError(rpcError));
+        });
+      } catch (err) {
+        if (removed) {
+          setItems((list) => (list.some((item) => item.id === id) ? list : [...list, removed]));
+        }
+        throw err;
+      }
     },
     [canWrite, track],
   );

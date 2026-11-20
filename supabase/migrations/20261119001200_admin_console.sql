@@ -252,6 +252,15 @@ begin
     (select count(*) from public.canvas_items c where c.created_by = u.id)
   from auth.users u
   left join public.profiles p on p.id = u.id
+  cross join lateral (
+    -- Fall back to GoTrue's own timestamps, so an account never reads "never"
+    -- merely because it signed in before heartbeats existed.
+    select coalesce(
+             p.last_seen_at,
+             u.last_sign_in_at,
+             (select max(s.updated_at)::timestamptz from auth.sessions s where s.user_id = u.id)
+           ) as derived_seen
+  ) v
   order by u.created_at;
 end;
 $$;
