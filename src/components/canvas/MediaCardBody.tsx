@@ -16,7 +16,6 @@ interface MediaCardBodyProps {
   asset: MediaAsset | null;
   /** Called when the rendering strategy changes so the card can show a badge. */
   onStatus?: (status: MediaStatus) => void;
-  interactive: boolean;
   /** When the host already handles dragging (DOM card shell). */
   embedded?: boolean;
 }
@@ -26,10 +25,11 @@ interface MediaCardBodyProps {
  *   direct <img>/<audio>/<video> -> Drive preview iframe -> open-in-Drive panel.
  * A successful iframe load is never treated as proof that playback works.
  */
-export function MediaCardBody({ asset, onStatus, interactive }: MediaCardBodyProps) {
+export function MediaCardBody({ asset, onStatus }: MediaCardBodyProps) {
   const [status, setStatus] = useState<MediaStatus>('direct');
   const [showEmbed, setShowEmbed] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
+  const [embedLoaded, setEmbedLoaded] = useState(false);
 
   const info = useMemo<DriveLinkInfo | null>(() => {
     if (!asset) return null;
@@ -55,6 +55,7 @@ export function MediaCardBody({ asset, onStatus, interactive }: MediaCardBodyPro
   useEffect(() => {
     setShowEmbed(false);
     setTimedOut(false);
+    setEmbedLoaded(false);
     setStatus(asset ? 'direct' : 'inaccessible');
   }, [asset?.id, asset]);
 
@@ -62,14 +63,20 @@ export function MediaCardBody({ asset, onStatus, interactive }: MediaCardBodyPro
     onStatus?.(status);
   }, [status, onStatus]);
 
-  // demote to the Drive preview if a direct player never becomes ready
+  // Drive-hosted audio/video cannot stream from a direct URL, so start in
+  // embed mode. Anything else gets the old "demote after a timeout" treatment.
   useEffect(() => {
     if (!asset || !info?.previewUrl) return;
     if (asset.file_type !== 'audio' && asset.file_type !== 'video') return;
     if (showEmbed) return;
+    if (asset.drive_file_id && !info.directUrl) {
+      setShowEmbed(true);
+      setStatus('embed');
+      return;
+    }
     const timer = window.setTimeout(() => setTimedOut(true), 9000);
     return () => window.clearTimeout(timer);
-  }, [asset, info?.previewUrl, showEmbed]);
+  }, [asset, info?.previewUrl, info?.directUrl, showEmbed]);
 
   useEffect(() => {
     if (timedOut && info?.previewUrl) {
@@ -134,6 +141,9 @@ export function MediaCardBody({ asset, onStatus, interactive }: MediaCardBodyPro
     );
   }
 
+  // Drive audio: there is no streamable direct URL (see driveDirectUrl), so go
+  // straight to Drive's player rather than mounting an <audio> that must fail
+  // first. A plain https audio file still gets the native player.
   if (asset.file_type === 'audio' && direct && !showEmbed) {
     return (
       <div className="flex h-full w-full flex-col justify-between gap-2 p-3">
@@ -155,24 +165,68 @@ export function MediaCardBody({ asset, onStatus, interactive }: MediaCardBodyPro
         >
           <track kind="captions" />
         </audio>
-        {embedAllowed ? (
-          <button
-            type="button"
-            className="self-start text-xs font-bold underline decoration-2 underline-offset-2"
-            onClick={(event) => {
-              event.stopPropagation();
-              setShowEmbed(true);
-              setStatus('embed');
-            }}
+      </div>
+    );
+  }
+
+  // Drive audio/video with a usable preview: fill the card with the player.
+  // The old 132px audio card clipped Drive's player chrome, which is what made
+  // attached audio look broken.
+  //
+  // Two things matter here:
+  //  - the iframe must not sit on a black background. Before it loads (or if it
+  //    is blocked entirely, e.g. by an aggressive blocker) the card was one
+  //    solid black rectangle with no hint of what it was.
+  //  - there is always a way out: the file name and an "open in Drive" link are
+  //    outside the iframe, so they work even when the embed does not.
+  if ((asset.file_type === 'audio' || asset.file_type === 'video') && showEmbed && info?.previewUrl && embedAllowed) {
+    return (
+      <div className="flex h-full w-full flex-col bg-cream">
+        <div className="flex items-center justify-between gap-1 border-b-2 border-ink/30 px-2 py-1">
+          <span className="truncate text-[10px] font-black uppercase tracking-wider text-ink-soft">
+            {asset.file_type} · {info.providerLabel}
+          </span>
+          <a
+            href={openUrl}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="shrink-0 text-[10px] font-bold underline decoration-2 underline-offset-2"
+            onPointerDown={(event) => event.stopPropagation()}
           >
-            Use Drive preview instead
-          </button>
-        ) : null}
+            Open
+          </a>
+        </div>
+        <div className="relative flex-1">
+          <iframe
+            src={info.previewUrl}
+            title={asset.file_name ?? 'Media preview'}
+            className="h-full w-full border-0"
+            allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+            allowFullScreen
+            loading="lazy"
+            onLoad={() => setEmbedLoaded(true)}
+          />
+          {!embedLoaded ? (
+            // Shown until the iframe reports a load. Deliberately opaque text on
+            // cream, so a blocked embed reads as "preview loading", not a glitch.
+            <div className="pointer-events-none absolute inset-0 grid place-items-center gap-1 bg-cream p-2 text-center">
+              <p className="truncate text-xs font-extrabold">{asset.file_name ?? 'Media'}</p>
+              <p className="text-[10px] font-bold text-ink-soft">
+                Loading {info.providerLabel} preview… if it stays blank, use Open.
+              </p>
+            </div>
+          ) : null}
+        </div>
       </div>
     );
   }
 
   if (asset.file_type === 'image' && direct && !showEmbed) {
+    // The card shell paints its own background and border, and the Konva layer
+    // paints the same image underneath for crisp zooming. Keeping the DOM <img>
+    // transparent to the eye but present in the tree means the picture is
+    // visible during a drag (when the Konva copy is hidden) and the card has a
+    // real element to double-click.
     return (
       <div className="relative h-full w-full">
         <img
@@ -180,7 +234,7 @@ export function MediaCardBody({ asset, onStatus, interactive }: MediaCardBodyPro
           alt={asset.file_name ?? 'Shared image'}
           className="h-full w-full rounded-[13px] object-cover"
           loading="lazy"
-          draggable={!interactive}
+          draggable={false}
           onLoad={() => setStatus('direct')}
           onError={() => {
             if (embedAllowed) {

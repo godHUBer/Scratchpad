@@ -34,6 +34,8 @@ interface WorkspaceContextValue {
   createTeam: (name: string, description?: string) => Promise<string>;
   renameWorkspace: (id: string, name: string, description?: string | null) => Promise<void>;
   deleteTeam: (id: string) => Promise<void>;
+  /** Delete a personal workspace (teams go through deleteTeam). */
+  deleteWorkspace: (id: string) => Promise<void>;
   setActiveWorkspace: (id: string | null) => void;
   refresh: () => Promise<void>;
   loadMembers: (workspaceId: string) => Promise<void>;
@@ -240,6 +242,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [activeId, refresh],
   );
 
+  const deleteWorkspace = useCallback(
+    async (id: string) => {
+      const { error: rpcError } = await supabase.rpc('delete_workspace', { p_workspace_id: id });
+      if (rpcError) throw new Error(humanizeError(rpcError));
+      if (activeId === id) setActiveId(null);
+      await refresh();
+    },
+    [activeId, refresh],
+  );
+
   const removeMember = useCallback(
     async (workspaceId: string, userId: string) => {
       const { error: rpcError } = await supabase.rpc('remove_member', {
@@ -400,6 +412,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       createTeam,
       renameWorkspace,
       deleteTeam,
+      deleteWorkspace,
       setActiveWorkspace,
       refresh,
       loadMembers,
@@ -427,6 +440,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       createTeam,
       renameWorkspace,
       deleteTeam,
+      deleteWorkspace,
       setActiveWorkspace,
       refresh,
       loadMembers,

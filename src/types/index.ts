@@ -56,6 +56,8 @@ export interface TextContent {
   fontSize?: number;
   color?: string;
   align?: 'left' | 'center' | 'right';
+  /** CSS font family/stack; absent means the historical Trebuchet default. */
+  fontFamily?: string;
   z?: number;
 }
 export interface DrawContent {
@@ -87,6 +89,10 @@ export interface CanvasItem {
   created_at: string;
   updated_at: string;
   version: number;
+  /** Set when the row is in the Trash (retention pipeline, migration 0010). */
+  deleted_at?: string | null;
+  /** When the Trash is emptied for good. */
+  purge_after?: string | null;
 }
 
 export interface Bookmark {

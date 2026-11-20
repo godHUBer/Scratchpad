@@ -38,7 +38,10 @@ interface SelectedCardBoxProps {
   children: React.ReactNode;
 }
 
-const NO_DRAG = 'button, a, audio, video, input, select, textarea, [data-no-drag]';
+// Anything the user must be able to click *without* moving the card. The media
+// players, the "open" links and the preview iframe all live in here.
+const NO_DRAG =
+  'button, a, audio, video, iframe, input, select, textarea, label, [role="slider"], [data-no-drag]';
 
 /**
  * The card bodies live in the DOM (so <video>/<audio>/<a> work natively), which

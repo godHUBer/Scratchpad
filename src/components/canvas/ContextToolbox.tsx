@@ -5,6 +5,7 @@ import { roleLabel } from '../../lib/permissions';
 import type { Role } from '../../types';
 import { hostnameOf, pluralize } from '../../lib/format';
 import { Icon } from '../ui/Icon';
+import { FontPicker } from './FontPicker';
 
 interface ContextToolboxProps {
   tool: Tool;
@@ -22,6 +23,8 @@ interface ContextToolboxProps {
   bookmarks: Record<string, Bookmark>;
   media: Record<string, MediaAsset>;
   onEditText: (item: CanvasItem) => void;
+  /** Change just the font family of one text/note item. */
+  onChangeFont?: (item: CanvasItem, family: string) => void;
   onEditCard: (item: CanvasItem) => void;
   onDuplicate: (item: CanvasItem) => void;
   onDelete: (item: CanvasItem) => void;
@@ -49,6 +52,7 @@ export function ContextToolbox(props: ContextToolboxProps) {
     bookmarks,
     media,
     onEditText,
+    onChangeFont,
     onEditCard,
     onDuplicate,
     onDelete,
@@ -106,6 +110,7 @@ export function ContextToolbox(props: ContextToolboxProps) {
           bookmarks={bookmarks}
           media={media}
           onEditText={onEditText}
+          onChangeFont={onChangeFont}
           onEditCard={onEditCard}
           onDuplicate={onDuplicate}
           onDelete={onDelete}
@@ -246,6 +251,7 @@ function SingleItem({
   bookmarks,
   media,
   onEditText,
+  onChangeFont,
   onEditCard,
   onDuplicate,
   onDelete,
@@ -256,6 +262,8 @@ function SingleItem({
   bookmarks: Record<string, Bookmark>;
   media: Record<string, MediaAsset>;
   onEditText: (item: CanvasItem) => void;
+  /** Change just the font family of one text/note item. */
+  onChangeFont?: (item: CanvasItem, family: string) => void;
   onEditCard: (item: CanvasItem) => void;
   onDuplicate: (item: CanvasItem) => void;
   onDelete: (item: CanvasItem) => void;
@@ -289,6 +297,15 @@ function SingleItem({
           <button type="button" className="btn mt-2 min-h-8 w-full px-2 py-0.5 text-xs" disabled={!canWrite} onClick={() => onEditText(item)}>
             Edit text
           </button>
+          {onChangeFont ? (
+            <div className="mt-2">
+              <FontPicker
+                compact
+                value={item.content.fontFamily}
+                onChange={(family) => onChangeFont(item, family)}
+              />
+            </div>
+          ) : null}
         </div>
       )}
 

@@ -29,8 +29,34 @@ const session = {
 const profile = { id: uid, display_name: 'QA Robot', avatar_url: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
 const workspace = { id: wsId, name: 'Personal', type: 'personal', owner_id: uid, description: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
 
+/**
+ * Seed rows. `?seed=cards` gives the QA harness something to drag, so the
+ * image/audio card fixes can be checked in a real browser instead of only in
+ * jsdom (which cannot paint a canvas).
+ */
+const seededItems = [
+  { id: 'c0000000-0000-4000-8000-000000000001', item_type: 'image', position_x: -320, position_y: -140,
+    width: 320, height: 240, content: { caption: 'cat.png' }, media_asset_id: 'a0000000-0000-4000-8000-000000000001' },
+  { id: 'c0000000-0000-4000-8000-000000000002', item_type: 'audio', position_x: 40, position_y: -140,
+    width: 300, height: 132, content: { caption: 'memo.mp3' }, media_asset_id: 'a0000000-0000-4000-8000-000000000002' },
+  { id: 'c0000000-0000-4000-8000-000000000003', item_type: 'text', position_x: -320, position_y: 140,
+    width: 260, height: 90, content: { text: 'Drag me by my text', fontSize: 20 } },
+].map((row) => ({
+  workspace_id: wsId, bookmark_id: null, created_by: uid,
+  created_at: new Date().toISOString(), updated_at: new Date().toISOString(), version: 1, ...row,
+}));
+
+const seededMedia = [
+  { id: 'a0000000-0000-4000-8000-000000000001', original_url: 'https://picsum.photos/640/480',
+    drive_file_id: null, file_name: 'cat.png', file_type: 'image', mime_type: 'image/png' },
+  { id: 'a0000000-0000-4000-8000-000000000002', original_url: 'https://drive.google.com/file/d/1AbCdEfGhIjKl/view',
+    drive_file_id: '1AbCdEfGhIjKl', file_name: 'memo.mp3', file_type: 'audio', mime_type: 'audio/mpeg' },
+].map((row) => ({ workspace_id: wsId, uploaded_by: uid, created_at: new Date().toISOString(), ...row }));
+
+const retentionPolicy = { cold_after_days: 60, trash_after_days: 90, purge_after_days: 100, enabled: false, updated_at: new Date().toISOString() };
+
 const canvasItems = [];
-const store = { items: canvasItems };
+const store = { items: canvasItems, seed: false, retention: retentionPolicy, trash: [] };
 
 /** Playwright route handler: (route) => void */
 export async function handle(route) {
@@ -60,6 +86,20 @@ export async function handle(route) {
   if (path.startsWith('/rest/v1/rpc/')) {
     const fn = path.split('/').pop();
     if (fn === 'ensure_personal_workspace') return reply({});
+    // retention pipeline (migration 0010) — ships paused
+    if (fn === 'get_retention_policy' || fn === 'set_retention_enabled') {
+      const body = JSON.parse(request.postData() || '{}');
+      if (body.p_enabled !== undefined) store.retention = { ...retentionPolicy, enabled: body.p_enabled };
+      return reply(store.retention);
+    }
+    if (fn === 'list_trashed_items') return reply(store.trash);
+    if (fn === 'restore_canvas_item') {
+      const body = JSON.parse(request.postData() || '{}');
+      const idx = store.trash.findIndex((i) => i.id === body.p_item_id);
+      const [row] = idx >= 0 ? store.trash.splice(idx, 1) : [];
+      return reply(row ?? null);
+    }
+    if (fn === 'delete_workspace' || fn === 'delete_team') return reply(null);
     if (fn === 'create_canvas_item') {
       const body = JSON.parse(request.postData() || '{}');
       const item = {
@@ -115,11 +155,12 @@ export async function handle(route) {
     if (url.search.includes('id=in.')) return reply([profile]);
     return reply(profile);
   }
-  if (path === '/rest/v1/canvas_items') return reply(store.items);
-  if (path === '/rest/v1/bookmarks' || path === '/rest/v1/media_assets') return reply([]);
+  if (path === '/rest/v1/canvas_items') return reply(store.seed ? seededItems : store.items);
+  if (path === '/rest/v1/bookmarks') return reply([]);
+  if (path === '/rest/v1/media_assets') return reply(store.seed ? seededMedia : []);
   if (path === '/rest/v1/invitations_safe') return reply([]);
   return reply([]);
 }
 
 
-export { handle as route, session, canvasItems };
+export { handle as route, session, canvasItems, store };

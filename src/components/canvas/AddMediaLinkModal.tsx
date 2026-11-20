@@ -12,24 +12,29 @@ import {
   type DriveLinkInfo,
 } from '../../lib/drive';
 import type { MediaAsset, MediaKind } from '../../types';
+import { Icon, type IconName } from '../ui/Icon';
 
 interface AddMediaLinkModalProps {
   open: boolean;
   workspaceId: string | null;
+  /** Which toolbar button opened this — the modal must not silently say "image". */
+  initialKind?: MediaKind;
   /** Editing an existing asset instead of creating one. */
   asset?: MediaAsset | null;
   onClose: () => void;
   onSaved: (asset: MediaAsset) => void;
 }
 
-const KIND_OPTIONS: Array<{ value: MediaKind; label: string; emoji: string }> = [
-  { value: 'image', label: 'Image', emoji: '🖼️' },
-  { value: 'audio', label: 'Audio', emoji: '🎧' },
-  { value: 'video', label: 'Video', emoji: '🎬' },
-  { value: 'link', label: 'Link card', emoji: '🔗' },
+// Inline SVG, not emoji: these rendered as tofu boxes on any machine without a
+// colour-emoji font (see Icon.tsx for the full explanation).
+const KIND_OPTIONS: Array<{ value: MediaKind; label: string; icon: IconName }> = [
+  { value: 'image', label: 'Image', icon: 'image' },
+  { value: 'audio', label: 'Audio', icon: 'audio' },
+  { value: 'video', label: 'Video', icon: 'video' },
+  { value: 'link', label: 'Link card', icon: 'link' },
 ];
 
-export function AddMediaLinkModal({ open, workspaceId, asset, onClose, onSaved }: AddMediaLinkModalProps) {
+export function AddMediaLinkModal({ open, workspaceId, initialKind = 'image', asset, onClose, onSaved }: AddMediaLinkModalProps) {
   const toast = useToast();
   const [url, setUrl] = useState('');
   const [kind, setKind] = useState<MediaKind>('image');
@@ -42,12 +47,15 @@ export function AddMediaLinkModal({ open, workspaceId, asset, onClose, onSaved }
   useEffect(() => {
     if (!open) return;
     setUrl(asset?.original_url ?? '');
-    setKind(asset?.file_type ?? 'image');
+    // Seed from the button the user pressed. Before this, `kind` defaulted to
+    // 'image' regardless, so the audio/video/Link buttons all opened an
+    // image-typed form and saved image assets.
+    setKind(asset?.file_type ?? initialKind);
     setName(asset?.file_name ?? '');
     setManual(Boolean(asset));
     setError(null);
     setProbe('idle');
-  }, [open, asset]);
+  }, [open, asset, initialKind]);
 
   const parsed = useMemo<DriveLinkInfo | null>(() => {
     const normalized = normalizeUrlInput(url);
@@ -187,7 +195,7 @@ export function AddMediaLinkModal({ open, workspaceId, asset, onClose, onSaved }
                   kind === option.value ? 'bg-mustard' : 'bg-paper'
                 }`}
               >
-                <span aria-hidden>{option.emoji}</span> {option.label}
+                <Icon name={option.icon} size={16} /> {option.label}
               </button>
             ))}
           </div>
@@ -300,7 +308,7 @@ export function AddMediaLinkModal({ open, workspaceId, asset, onClose, onSaved }
         </section>
 
         <div className="rounded-2xl border-[3px] border-ink bg-mustard/40 px-3 py-2 text-xs font-semibold">
-          ⚠️ Anyone with this link may be able to open the original file — Google Drive sharing is separate from
+          <strong>Heads up:</strong> anyone with this link may be able to open the original file — Google Drive sharing is separate from
           Scratchpad permissions. Scratchpad never stores the file itself, only this link.
         </div>
 

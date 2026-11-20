@@ -21,6 +21,10 @@ import { canEdit, roleLabel, writeBlockedMessage } from '../lib/permissions';
 import { humanizeError } from '../lib/errors';
 import type { CanvasItem, MediaAsset } from '../types';
 import { Icon } from '../components/ui/Icon';
+import { findFreeSlot, sizeForKind } from '../components/canvas/placement';
+import { MediaPreviewModal } from '../components/canvas/MediaPreviewModal';
+import { DeleteWorkspaceDialog } from '../components/teams/DeleteWorkspaceDialog';
+import { TrashPanel } from '../components/canvas/TrashPanel';
 
 type MediaModalKind = 'image' | 'audio' | 'video' | 'media_link';
 
@@ -40,6 +44,7 @@ export function WorkspacePage() {
     currentWorkspace,
     currentRole,
     setActiveWorkspace,
+    refresh: refreshWorkspaces,
     members,
     loading: workspacesLoading,
     error: workspaceError,
@@ -74,6 +79,10 @@ export function WorkspacePage() {
     kind: 'image',
     asset: null,
   });
+  // Full-size preview target (double-click a media card, any role).
+  const [previewAsset, setPreviewAsset] = useState<MediaAsset | null>(null);
+  const [deleteWorkspaceOpen, setDeleteWorkspaceOpen] = useState(false);
+  const [trashOpen, setTrashOpen] = useState(false);
 
   const workspace = useMemo(
     () => workspaces.find((w) => w.id === workspaceId) ?? null,
@@ -97,7 +106,8 @@ export function WorkspacePage() {
 
   const canWrite = canEdit(currentRole);
   const [undoAvailable, setUndoAvailable] = useState(false);
-  const [zoom, setZoom] = useState(1);
+  // world position of the visible centre, reported by the canvas on pan/zoom
+  const [viewCentre, setViewCentre] = useState({ x: 0, y: 0 });
 
   const handleRemote = useCallback(
     (item: CanvasItem | null, kind: 'insert' | 'update' | 'delete') => {
@@ -223,8 +233,20 @@ export function WorkspacePage() {
     setTextEditor({ item: null, position });
   };
 
-  const handleTextSave = async (value: { text: string; fontSize: number; color: string; align: 'left' | 'center' | 'right' }) => {
-    const content = { text: value.text, fontSize: value.fontSize, color: value.color, align: value.align };
+  const handleTextSave = async (value: {
+    text: string;
+    fontSize: number;
+    color: string;
+    align: 'left' | 'center' | 'right';
+    fontFamily: string;
+  }) => {
+    const content = {
+      text: value.text,
+      fontSize: value.fontSize,
+      color: value.color,
+      align: value.align,
+      fontFamily: value.fontFamily,
+    };
     if (textEditor.item) {
       const beforeContent = { ...textEditor.item.content };
       await canvas.patchItem(textEditor.item.id, {
@@ -271,19 +293,44 @@ export function WorkspacePage() {
     setMediaEditor({ open: true, kind, asset: null });
   };
 
+  /**
+   * Where should the next card go?
+   *
+   * Every new card used to be dropped at `-window.innerWidth / (2 * zoom) + 120`,
+   * which ignores panning and the actual pane size and is *the same* for every
+   * card — so a run of uploads landed exactly on top of each other. We now ask
+   * the canvas for a free slot near the visible centre (or offset from the
+   * current selection) and spiral outwards until nothing collides.
+   */
+  const nextSlot = (width: number, height: number) => {
+    const [first] = selectedItems;
+    const preferred = first
+      ? { x: first.position_x + 40, y: first.position_y + 40 }
+      : { x: viewCentre.x - width / 2, y: viewCentre.y - height / 2 };
+    const occupied = canvas.items.map((item) => ({
+      x: item.position_x,
+      y: item.position_y,
+      width: item.width,
+      height: item.height,
+    }));
+    return findFreeSlot(preferred, { width, height }, occupied);
+  };
+
   const onMediaSaved = async (asset: MediaAsset) => {
     const existing = mediaEditor.asset;
     if (existing) {
       toast.success('Media link updated.');
       return;
     }
-    const [first] = selectedItems;
+    const kind = asset.file_type === 'link' ? 'media_link' : (asset.file_type as 'image' | 'audio' | 'video');
+    const size = sizeForKind(asset.file_type);
+    const slot = nextSlot(size.width, size.height);
     const created = await canvas.createItem({
-      item_type: asset.file_type === 'link' ? 'media_link' : (asset.file_type as 'image' | 'audio' | 'video'),
-      position_x: first ? first.position_x + 40 : -window.innerWidth / (2 * zoom) + 120,
-      position_y: first ? first.position_y + 40 : -window.innerHeight / (2 * zoom) + 140,
-      width: asset.file_type === 'image' ? 320 : asset.file_type === 'audio' ? 300 : 380,
-      height: asset.file_type === 'image' ? 240 : asset.file_type === 'audio' ? 120 : 240,
+      item_type: kind,
+      position_x: slot.x,
+      position_y: slot.y,
+      width: size.width,
+      height: size.height,
       content: { caption: asset.file_name ?? asset.file_type },
       media_asset_id: asset.id,
     });
@@ -309,13 +356,14 @@ export function WorkspacePage() {
       toast.success('Bookmark updated.');
       return;
     }
-    const [first] = selectedItems;
+    const size = sizeForKind('bookmark');
+    const slot = nextSlot(size.width, size.height);
     const created = await canvas.createItem({
       item_type: 'bookmark',
-      position_x: first ? first.position_x + 40 : -window.innerWidth / (2 * zoom) + 100,
-      position_y: first ? first.position_y + 40 : -window.innerHeight / (2 * zoom) + 120,
-      width: 280,
-      height: 170,
+      position_x: slot.x,
+      position_y: slot.y,
+      width: size.width,
+      height: size.height,
       content: { caption: bookmark.title },
       bookmark_id: bookmark.id,
     });
@@ -397,6 +445,26 @@ export function WorkspacePage() {
           <span className="chip bg-paper" title="Your role in this workspace">
             {roleLabel(currentRole ?? 'viewer')}
           </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className="chip bg-paper hover:bg-cream"
+              onClick={() => setTrashOpen(true)}
+              title="Items the cleanup moved aside can be restored"
+            >
+              <Icon name="trash" size={13} className="inline" /> Trash
+            </button>
+            {workspace.owner_id === user.id ? (
+              <button
+                type="button"
+                className="chip bg-coral hover:bg-paper"
+                onClick={() => setDeleteWorkspaceOpen(true)}
+                title={workspace.type === 'personal' ? 'Delete this workspace' : 'Delete this team'}
+              >
+                Delete
+              </button>
+            ) : null}
+          </div>
         </div>
 
         {canvas.loading ? (
@@ -436,19 +504,21 @@ export function WorkspacePage() {
           onCreateText={createTextAt}
           onError={(message) => toast.error(message)}
           onUndoAvailable={setUndoAvailable}
-          onZoomChange={setZoom}
+          onViewportChange={setViewCentre}
           onEraseNotice={() =>
             toast.info('Eraser: click a drawing, text or card to delete it. Ctrl+Z brings it back.')
           }
           onOpenCardEditor={(item) => {
-            if (!guardWrite()) return;
             if (item.item_type === 'bookmark') {
+              if (!guardWrite()) return;
               const bookmark = item.bookmark_id ? canvas.bookmarks[item.bookmark_id] : null;
               setBookmarkEditor({ open: true, bookmarkId: bookmark?.id ?? null, prefill: {} });
-            } else {
-              const asset = item.media_asset_id ? canvas.media[item.media_asset_id] : null;
-              setMediaEditor({ open: true, kind: 'media_link', asset: asset ?? null });
+              return;
             }
+            // Double-clicking media shows it full size for everyone — this used
+            // to open a write dialog, so viewers saw nothing at all.
+            const asset = item.media_asset_id ? canvas.media[item.media_asset_id] : null;
+            if (asset) setPreviewAsset(asset);
           }}
         />
 
@@ -468,6 +538,14 @@ export function WorkspacePage() {
           bookmarks={canvas.bookmarks}
           media={canvas.media}
           onEditText={openTextFor}
+          onChangeFont={async (item, family) => {
+            if (!guardWrite()) return;
+            try {
+              await canvas.patchItem(item.id, { content: { ...item.content, fontFamily: family } });
+            } catch (err) {
+              toast.error(humanizeError(err));
+            }
+          }}
           onEditCard={(item) => {
             if (!guardWrite()) return;
             if (item.item_type === 'bookmark') {
@@ -557,6 +635,7 @@ export function WorkspacePage() {
       <AddMediaLinkModal
         open={mediaEditor.open}
         workspaceId={workspace.id}
+        initialKind={mediaEditor.kind === 'media_link' ? 'link' : mediaEditor.kind}
         asset={mediaEditor.asset}
         onClose={() => {
           setMediaEditor({ open: false, kind: 'image', asset: null });
@@ -566,6 +645,43 @@ export function WorkspacePage() {
           void canvas.refreshMedia();
           void onMediaSaved(asset);
         }}
+      />
+
+      <DeleteWorkspaceDialog
+        open={deleteWorkspaceOpen}
+        workspace={workspace}
+        isPersonal={workspace.type === 'personal'}
+        onClose={() => setDeleteWorkspaceOpen(false)}
+        onDeleted={() => {
+          setDeleteWorkspaceOpen(false);
+          void refreshWorkspaces().then(() => navigate('/workspace', { replace: true }));
+        }}
+      />
+
+      <TrashPanel
+        open={trashOpen}
+        workspaceId={workspace.id}
+        canWrite={canWrite}
+        onClose={() => {
+          setTrashOpen(false);
+          void canvas.reload();
+        }}
+        onRestored={() => void canvas.reload()}
+      />
+
+      <MediaPreviewModal
+        open={previewAsset !== null}
+        asset={previewAsset}
+        onClose={() => setPreviewAsset(null)}
+        onEdit={
+          canWrite
+            ? () => {
+                const asset = previewAsset;
+                setPreviewAsset(null);
+                setMediaEditor({ open: true, kind: 'media_link', asset });
+              }
+            : undefined
+        }
       />
 
       <MemberListModal

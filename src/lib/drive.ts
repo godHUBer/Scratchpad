@@ -166,13 +166,22 @@ export function extractDriveId(url: URL): string | null {
   return null;
 }
 
-/** Best-effort direct URL. Drive may still refuse; callers must fall back. */
+/**
+ * Best-effort direct URL for Drive content.
+ *
+ * Images work: `lh3.googleusercontent.com/d/<id>` is a real image response.
+ *
+ * Audio and video do **not**. The only streamable-looking Drive endpoint left is
+ * `drive.usercontent.google.com/download?id=…&export=download`, and that replies
+ * with `Content-Disposition: attachment`. A browser will download it, not
+ * decode it, so `<audio>`/`<video src="…">` fires `error` and never plays — the
+ * "Google Drive audio looks buggy" report. Returning the URL anyway just makes
+ * every player fail once before falling back, so we return null and let the
+ * caller go straight to Drive's preview iframe (which does handle both).
+ */
 export function driveDirectUrl(fileId: string, kind: MediaKind): string | null {
   if (!DRIVE_ID.test(fileId)) return null;
   if (kind === 'image') return `https://lh3.googleusercontent.com/d/${fileId}=w2000`;
-  if (kind === 'audio' || kind === 'video') {
-    return `https://drive.usercontent.google.com/download?id=${fileId}&export=download`;
-  }
   return null;
 }
 

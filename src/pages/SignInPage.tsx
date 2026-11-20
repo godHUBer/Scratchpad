@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Navigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth, rememberPendingPath, consumePendingPath } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { humanizeError } from '../lib/errors';
@@ -182,6 +182,17 @@ export function SignInPage() {
               {busy === 'email' ? 'Working…' : mode === 'signup' ? 'Create account' : 'Sign in with email'}
             </button>
           </form>
+
+          {mode === 'signin' ? (
+            <p className="mt-2 text-sm">
+              <Link
+                to="/reset-password"
+                className="font-bold underline decoration-2 underline-offset-2"
+              >
+                Forgot your password?
+              </Link>
+            </p>
+          ) : null}
 
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
             <button

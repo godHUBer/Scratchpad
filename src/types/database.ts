@@ -50,6 +50,8 @@ export interface Database {
           created_at: string;
           updated_at: string;
           version: number;
+          deleted_at?: string | null;
+          purge_after?: string | null;
         },
         {
           workspace_id: string;
@@ -159,6 +161,29 @@ export interface Database {
       create_team: { Args: { p_name: string; p_description?: string | null }; Returns: string };
       rename_workspace: { Args: { p_workspace_id: string; p_name: string; p_description?: string | null }; Returns: undefined };
       delete_team: { Args: { p_workspace_id: string }; Returns: undefined };
+      delete_workspace: { Args: { p_workspace_id: string }; Returns: undefined };
+      get_retention_policy: {
+        Args: Record<string, never>;
+        Returns: {
+          cold_after_days: number;
+          trash_after_days: number;
+          purge_after_days: number;
+          enabled: boolean;
+          updated_at: string;
+        };
+      };
+      set_retention_enabled: {
+        Args: { p_enabled: boolean };
+        Returns: {
+          cold_after_days: number;
+          trash_after_days: number;
+          purge_after_days: number;
+          enabled: boolean;
+          updated_at: string;
+        };
+      };
+      restore_canvas_item: { Args: { p_item_id: string }; Returns: Database['public']['Tables']['canvas_items']['Row'] };
+      list_trashed_items: { Args: { p_workspace_id: string }; Returns: Array<Database['public']['Tables']['canvas_items']['Row']> };
       leave_workspace: { Args: { p_workspace_id: string }; Returns: undefined };
       remove_member: { Args: { p_workspace_id: string; p_user_id: string }; Returns: undefined };
       set_member_role: { Args: { p_workspace_id: string; p_user_id: string; p_role: string }; Returns: undefined };

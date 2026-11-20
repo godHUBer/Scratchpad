@@ -22,6 +22,10 @@ interface AuthContextValue {
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signUpWithEmail: (email: string, password: string, displayName: string) => Promise<{ needsConfirmation: boolean }>;
   updateProfile: (patch: { display_name?: string; avatar_url?: string | null }) => Promise<void>;
+  /** Send the "reset your password" email. */
+  requestPasswordReset: (email: string) => Promise<void>;
+  /** Apply a new password (used by the recovery link, or by a signed-in user). */
+  updatePassword: (password: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -194,6 +198,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [session?.user],
   );
 
+  const requestPasswordReset = useCallback(async (email: string) => {
+    // The link lands back on the app; GoTrue appends the recovery tokens to the
+    // redirect, and supabase-js turns that into PASSWORD_RECOVERY.
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: authRedirectUrl(),
+    });
+    if (error) throw new Error(humanizeError(error));
+  }, []);
+
+  const updatePassword = useCallback(async (password: string) => {
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) throw new Error(humanizeError(error));
+  }, []);
+
   const refreshProfile = useCallback(async () => {
     if (session?.user) await loadProfile(session.user);
   }, [session?.user, loadProfile]);
@@ -213,6 +231,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInWithEmail,
       signUpWithEmail,
       updateProfile,
+      requestPasswordReset,
+      updatePassword,
       signOut,
       refreshProfile,
     }),
@@ -224,6 +244,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInWithEmail,
       signUpWithEmail,
       updateProfile,
+      requestPasswordReset,
+      updatePassword,
       signOut,
       refreshProfile,
     ],
