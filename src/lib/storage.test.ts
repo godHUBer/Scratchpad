@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { readJson, readString, writeJson, writeString } from './storage';
+import { readJson, readString, removeKey, writeJson, writeString } from './storage';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -49,6 +49,16 @@ describe('safe storage', () => {
       throw new DOMException('quota', 'QuotaExceededError');
     });
     expect(writeString('k', 'v')).toBe(false);
+  });
+
+  it('removes a key, and tolerates blocked storage', () => {
+    writeString('k', 'v');
+    expect(removeKey('k')).toBe(true);
+    expect(readString('k')).toBeNull();
+    vi.spyOn(window, 'localStorage', 'get').mockImplementation(() => {
+      throw new Error('SecurityError');
+    });
+    expect(removeKey('k')).toBe(false);
   });
 
   it('survives a value JSON cannot represent', () => {

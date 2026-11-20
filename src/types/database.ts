@@ -175,6 +175,52 @@ export interface Database {
           role_offered: string;
         }>;
       };
+      heartbeat: { Args: Record<string, never>; Returns: undefined };
+      admin_login: {
+        Args: { p_key: string };
+        Returns: Array<{ token: string | null; expires_at: string | null; reason: string | null }>;
+      };
+      admin_logout: { Args: { p_token: string }; Returns: undefined };
+      admin_list_users: {
+        Args: { p_token: string };
+        Returns: Array<{
+          user_id: string;
+          email: string;
+          display_name: string;
+          created_at: string;
+          last_sign_in_at: string | null;
+          last_seen_at: string | null;
+          is_online: boolean;
+          workspace_count: number;
+          item_count: number;
+        }>;
+      };
+      admin_list_workspaces: {
+        Args: { p_token: string };
+        Returns: Array<{
+          workspace_id: string;
+          name: string;
+          type: string;
+          owner_email: string;
+          member_count: number;
+          item_count: number;
+          created_at: string;
+        }>;
+      };
+      admin_list_audit: {
+        Args: { p_token: string; p_limit?: number };
+        Returns: Array<{
+          id: number;
+          action: string;
+          target_email: string | null;
+          detail: Record<string, unknown>;
+          created_at: string;
+        }>;
+      };
+      admin_delete_user: { Args: { p_token: string; p_user_id: string }; Returns: undefined };
+      admin_set_password: { Args: { p_token: string; p_user_id: string; p_new_password: string }; Returns: undefined };
+      admin_delete_workspace: { Args: { p_token: string; p_workspace_id: string }; Returns: undefined };
+      admin_revoke_sessions: { Args: { p_token: string }; Returns: number };
       get_retention_policy: {
         Args: Record<string, never>;
         Returns: {

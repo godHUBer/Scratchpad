@@ -206,6 +206,12 @@ export function SignInPage() {
             >
               {mode === 'signin' ? 'Create an account' : 'I already have an account'}
             </button>
+            <Link
+              to="/admin"
+              className="text-xs font-bold text-ink-soft underline underline-offset-2 hover:text-ink"
+            >
+              Admin access
+            </Link>
           </div>
 
           {error ? (

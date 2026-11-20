@@ -45,6 +45,18 @@ export function writeString(key: Key, value: string): boolean {
   }
 }
 
+/** Best-effort removal; storage may be blocked entirely. */
+export function removeKey(key: Key): boolean {
+  try {
+    const s = store();
+    if (!s) return false;
+    s.removeItem(key);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function readJson<T>(key: Key, fallback: T, isValid: (v: unknown) => v is T): T {
   const raw = readString(key);
   if (!raw) return fallback;
