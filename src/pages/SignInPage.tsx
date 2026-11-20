@@ -3,25 +3,54 @@ import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth, rememberPendingPath, consumePendingPath } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { humanizeError } from '../lib/errors';
-import { supabaseConfigured } from '../integrations/supabase/client';
+import { supabaseConfigured, supabasePublishableKey, supabaseUrl } from '../integrations/supabase/client';
+import {
+  allProvidersOff,
+  oauthCallbackUrl,
+  oauthFailureMessage,
+  readProviderStates,
+  type OAuthProviderName,
+  type OAuthProviderState,
+} from '../lib/oauthProviders';
 import { Spinner } from '../components/ui/Spinner';
 import { Icon } from '../components/ui/Icon';
 
 type Mode = 'signin' | 'signup';
 
 export function SignInPage() {
-  const { session, loading, signInWithGoogle, signInWithEmail, signUpWithEmail } = useAuth();
+  const { session, loading, signInWithOAuth, signInWithEmail, signUpWithEmail } = useAuth();
   const toast = useToast();
   const [params] = useSearchParams();
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [busy, setBusy] = useState<'google' | 'email' | null>(null);
+  const [busy, setBusy] = useState<OAuthProviderName | 'email' | null>(null);
+  const [providers, setProviders] = useState<OAuthProviderState[]>(allProvidersOff);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const next = params.get('next');
+
+  // Ask the auth server which social providers are switched on, so we never
+  // offer a button that can only end in a provider error page.
+  useEffect(() => {
+    if (!supabaseConfigured) return;
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const response = await fetch(`${supabaseUrl.replace(/\/+$/, '')}/auth/v1/settings`, {
+          headers: { apikey: supabasePublishableKey },
+          signal: controller.signal,
+        });
+        if (!response.ok) return;
+        setProviders(readProviderStates(await response.json()));
+      } catch {
+        // Offline or blocked: leave every provider off and let email carry it.
+      }
+    })();
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     if (next) rememberPendingPath(next);
@@ -42,14 +71,15 @@ export function SignInPage() {
     return <Navigate to={pending && pending.startsWith('/') ? pending : '/workspace'} replace />;
   }
 
-  const handleGoogle = async () => {
-    setBusy('google');
+  const handleOAuth = async (provider: OAuthProviderName) => {
+    setBusy(provider);
     setError(null);
     try {
-      await signInWithGoogle();
+      await signInWithOAuth(provider);
       // Redirect happens in the browser; nothing else to do here.
     } catch (err) {
-      setError(humanizeError(err));
+      const raw = err instanceof Error ? err.message : String(err);
+      setError(oauthFailureMessage(raw) ?? humanizeError(err));
       setBusy(null);
     }
   };
@@ -105,7 +135,7 @@ export function SignInPage() {
 
         <section className="paper p-5 sm:p-6">
           <h2 className="text-xl font-extrabold">Sign in</h2>
-          <p className="mt-1 text-sm text-ink-soft">Use Google for one-tap access, or an email account.</p>
+          <p className="mt-1 text-sm text-ink-soft">Use a social account for one-tap access, or an email account.</p>
 
           {!supabaseConfigured ? (
             <div className="mt-4 rounded-xl border-[3px] border-ink bg-coral p-3 text-sm font-bold">
@@ -114,15 +144,43 @@ export function SignInPage() {
             </div>
           ) : null}
 
-          <button
-            type="button"
-            className="btn mt-4 w-full bg-paper"
-            onClick={handleGoogle}
-            disabled={busy !== null || !supabaseConfigured}
-          >
-            <GoogleGlyph />
-            {busy === 'google' ? 'Opening Google…' : 'Continue with Google'}
-          </button>
+          <div className="mt-4 space-y-2">
+            {providers.map((provider) => {
+              const canUse = provider.enabled && supabaseConfigured && busy === null;
+              return (
+                <button
+                  key={provider.name}
+                  type="button"
+                  className="btn w-full bg-paper"
+                  onClick={() => handleOAuth(provider.name)}
+                  disabled={!canUse}
+                  // Disabled state still says why, instead of looking broken.
+                  title={provider.enabled ? undefined : `${provider.label} sign-in is not configured on the server yet`}
+                >
+                  {provider.name === 'google' ? <GoogleGlyph /> : <GitHubGlyph />}
+                  {provider.enabled
+                    ? busy === provider.name
+                      ? `Opening ${provider.label}…`
+                      : `Continue with ${provider.label}`
+                    : `${provider.label} — not set up yet`}
+                </button>
+              );
+            })}
+          </div>
+
+          {providers.some((provider) => provider.enabled) ? null : (
+            <details className="mt-2 text-xs leading-relaxed text-ink-soft">
+              <summary className="cursor-pointer font-bold">Why are the social buttons disabled?</summary>
+              <p className="mt-2">
+                No social provider is enabled for this project yet, so email sign-in is the way in. To fix it, create an
+                OAuth app with the provider and paste its client ID and secret into Supabase under
+                <strong> Authentication → Providers</strong>. The authorised redirect URI to register there is:
+              </p>
+              <code className="mt-1 block break-all rounded-lg border-2 border-ink bg-paper px-2 py-1 font-mono text-[11px]">
+                {oauthCallbackUrl(supabaseUrl) || 'https://<project-ref>.supabase.co/auth/v1/callback'}
+              </code>
+            </details>
+          )}
 
           <div className="my-4 flex items-center gap-3 text-xs font-black uppercase tracking-widest text-ink-soft">
             <span className="h-[3px] flex-1 rounded bg-ink/20" />
@@ -225,10 +283,6 @@ export function SignInPage() {
             </p>
           ) : null}
 
-          <p className="mt-4 text-xs leading-relaxed text-ink-soft">
-            Google sign-in needs a Supabase Google provider configured with your own OAuth client. Setup steps are in
-            the README — until then, email sign-in works out of the box.
-          </p>
         </section>
       </div>
     </div>
@@ -253,6 +307,18 @@ function GoogleGlyph() {
       <path
         fill="#34A853"
         d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
+      />
+    </svg>
+  );
+}
+
+/** GitHub's mark, in ink so it matches the rest of the buttons. */
+function GitHubGlyph() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden focusable="false">
+      <path
+        fill="#080808"
+        d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"
       />
     </svg>
   );

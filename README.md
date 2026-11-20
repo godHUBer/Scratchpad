@@ -115,9 +115,57 @@ Authentication → URL Configuration:
 
 The client uses **PKCE** (`flowType: 'pkce'`, `detectSessionInUrl: true`, `persistSession: true`) and computes `redirectTo` as `origin + BASE_URL`, so local, preview and Pages URLs all round-trip correctly with HashRouter.
 
-### 3.4 Google sign-in (manual step — requires your own credentials)
+### 3.4 Social sign-in: Google and GitHub (manual step — requires your own OAuth apps)
 
-I cannot create Google Cloud credentials for you. Steps:
+I cannot create OAuth apps for you. **Until one of these sections is done, the
+button for that provider stays disabled on the sign-in page and says "not set up
+yet"** — the page asks `GET /auth/v1/settings` on load and only offers providers
+the server reports as enabled. That is deliberate: pressing an unconfigured
+provider used to bounce the user to a bare provider error page.
+
+Both providers need the same thing from Supabase, and it is the single most
+common cause of "login is broken":
+
+| Where | Value |
+|---|---|
+| OAuth app *Authorised redirect URI* | `https://<project-ref>.supabase.co/auth/v1/callback` |
+| Supabase *Authentication → URL Configuration → Redirect URLs* | your app URLs, e.g. `https://<you>.github.io/<repo>/` and `http://localhost:5173/` |
+
+Two different URLs, two different places. The callback belongs to Supabase;
+your site URL belongs to Supabase's allow-list. The sign-in page prints its own
+callback URL when a provider is missing, so you can copy it from there.
+
+#### Google
+
+1. <https://console.cloud.google.com> → create/select a project.
+2. **APIs & Services → OAuth consent screen** → External → app name and your email; add test users (or publish the app).
+3. **APIs & Services → Credentials → Create credentials → OAuth client ID**
+   - Application type: **Web application**
+   - **Authorised JavaScript origins**: `https://<you>.github.io`, `http://localhost:5173`
+   - **Authorised redirect URI**: `https://<project-ref>.supabase.co/auth/v1/callback`
+4. Supabase Dashboard → **Authentication → Providers → Google** → enable, paste Client ID + Client Secret, save.
+
+If you already have a Google Cloud project for another use, you can reuse it —
+just add the redirect URI above to an existing **Web application** client.
+
+#### GitHub
+
+1. <https://github.com/settings/developers> → **OAuth Apps → New OAuth App**.
+2. **Authorization callback URL**: `https://<project-ref>.supabase.co/auth/v1/callback`
+   (the *Homepage URL* can be your Pages URL).
+3. **Register application**, then **Generate a new client secret**.
+4. Supabase Dashboard → **Authentication → Providers → GitHub** → enable, paste Client ID + Client Secret, save.
+
+GitHub users have no private email by default, which is why Supabase asks for
+the `user:email` scope. If GitHub does not return an email, the account is
+created without one — it still works, it just shows as the GitHub login name.
+
+#### Checking it
+
+Open <https://<project-ref>.supabase.co/auth/v1/settings> with the publishable
+key as the `apikey` header (or read the sign-in page): `"google": true` and
+`"github": true` under `external` mean the buttons will light up.
+
 
 1. <https://console.cloud.google.com> → create/select a project.
 2. **APIs & Services → OAuth consent screen** → External → fill in the app name and your email; add your test users (or publish the app).
