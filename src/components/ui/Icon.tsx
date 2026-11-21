@@ -8,6 +8,17 @@
  * blank. Inline SVG has no font dependency and scales with the 3px ink outline
  * design, so it renders identically everywhere.
  *
+ * Geometry for 18 of the 29 names is borrowed from Its Hover
+ * (https://github.com/itshover/itshover, Apache-2.0) — see `icons/borrowed.ts`,
+ * which lists the upstream file for each. The other 11 (plus, zoomIn, zoomOut,
+ * eraser, hand, font, image, video, sun, settings, text) have no upstream
+ * equivalent and keep the hand-drawn paths below.
+ *
+ * On hover, and only then, `motion` is fetched in a separate chunk and the
+ * glyph animates. `motion` in the entry bundle measured +55 kB gzip (158 → 213
+ * against a 160 kB budget), so it is deferred; the static SVG above is what
+ * always paints first, so an icon never blanks waiting for the animation.
+ *
  * Drawing rules (they exist because breaking them produced bad icons):
  *
  *   1. One consistent grid. Everything lives in 0–24 with a 2.4 stroke and
@@ -26,15 +37,29 @@
  *        - bookmark (flag) vs bookmarkShelf (three spines)
  *        - undo (straight tail) vs reset (closed circle)
  *        - close (×)      vs plus (+)
- *   5. A single <path>, because the component renders one element. Extra
- *      strokes are appended as sub-paths ("M…Z M…Z"), which also keeps the
- *      whole glyph in one place for the tests.
+ *   5. Hand-drawn glyphs stay one <path>. Extra strokes are appended as
+ *      sub-paths ("M…Z M…Z"), which keeps the whole glyph in one place for the
+ *      tests. Borrowed glyphs are the exception: they keep 2–5 separate <path>
+ *      elements because that is what lets an animation move one part (a bin
+ *      lid) without redrawing the rest — see `icons/borrowed.ts`.
  *
  * `src/components/ui/Icon.test.tsx` guards the mechanical part of the rules:
  * every icon must parse, stay inside the box, and not contain NaN.
  */
-import type { SVGProps } from 'react';
+import { createElement, useState, type SVGProps } from 'react';
+import { BORROWED } from './icons/borrowed';
+import { hasAnimatedGlyph, useAnimatedGlyph } from './icons/useAnimatedGlyph';
 
+/*
+  Hand-drawn geometry, and the source of truth for `IconName` — the type is
+  `keyof typeof PATHS`, so a name cannot be removed without removing the icon.
+
+  Eighteen of these keys are now shadowed by `BORROWED` and their path strings
+  are never rendered (about 1.4 kB of source). They are kept for two reasons:
+  the key is what makes the name legal, and a borrowed glyph that ever needs
+  reverting has its original geometry one lookup away. At the current entry size
+  that is a cheaper trade than splitting the type out of this object.
+*/
 const PATHS = {
   select: 'M6.2 3.4l3 16.1 4-6.2 7 .3-4.6-3.2 2.9-6.5z',
   text: 'M4.5 20.5L10.8 4.2M13.2 4.2L19.5 20.5M7.6 14.6h8.8',
@@ -86,12 +111,36 @@ const PATHS = {
 
 export type IconName = keyof typeof PATHS;
 
-interface IconProps extends Omit<SVGProps<SVGSVGElement>, 'name'> {
+interface IconProps extends Omit<SVGProps<SVGSVGElement>, 'name' | 'size' | 'strokeWidth'> {
   name: IconName;
+  /** Narrowed for the same reason as `size`; SVG's own type is string | number. */
+  strokeWidth?: number;
+  /**
+   * Pixel size. Deliberately a number, not the SVG attribute's
+   * `string | number`: every call site passes a number, and narrowing it keeps
+   * the animated renderer's contract simple.
+   */
   size?: number;
 }
 
-export function Icon({ name, size = 22, strokeWidth = 2.4, ...rest }: IconProps) {
+/**
+ * Static SVG renderer — always the first paint.
+ *
+ * Uses the borrowed multi-path geometry when there is any, otherwise the single
+ * hand-drawn path. Keeping one component for both means the animated chunk has
+ * nothing to fall back to if it fails: the icon is already correct on screen.
+ */
+function StaticGlyph({
+  name,
+  size,
+  strokeWidth,
+  ...rest
+}: {
+  name: IconName;
+  size: number;
+  strokeWidth: number;
+} & Omit<SVGProps<SVGSVGElement>, 'name' | 'size' | 'strokeWidth'>) {
+  const borrowed = BORROWED[name];
   return (
     <svg
       viewBox="0 0 24 24"
@@ -106,7 +155,60 @@ export function Icon({ name, size = 22, strokeWidth = 2.4, ...rest }: IconProps)
       focusable="false"
       {...rest}
     >
-      <path d={PATHS[name]} />
+      {borrowed ? borrowed.paths.map((d) => <path key={d} d={d} />) : <path d={PATHS[name]} />}
     </svg>
+  );
+}
+
+export function Icon({ name, size = 22, strokeWidth = 2.4, ...rest }: IconProps) {
+  // The very first hover is what triggers the download; before that the visitor
+  // has paid nothing for an animation they may never see.
+  const [wanted, setWanted] = useState(false);
+  const Animated = useAnimatedGlyph(wanted && hasAnimatedGlyph(name));
+
+  /*
+    The hand-off, and why it waits for the chunk.
+
+    While the animation is loading the static SVG is the only thing rendered, so
+    the glyph is always on screen: the worst case is "the animation arrives
+    late", never "the icon blinked out from under the pointer". Only once the
+    component is actually in hand does the static copy stop rendering.
+
+    Rendering both at once was the first attempt and was wrong in a subtle way —
+    the animated glyph sat on top of a pixel-identical static one, so a
+    `pathLength` draw animation was hidden behind the copy it was meant to
+    replace. Exactly one glyph should ever be painted.
+  */
+  if (Animated) {
+    /*
+      `createElement` rather than JSX: `Animated` comes from a hook, and
+      `react-hooks/static-components` reads a component-valued variable in JSX as
+      one being created during render. It is a stable module-level reference
+      (see `useAnimatedGlyph`), so this is a false positive, but the rule is
+      worth keeping everywhere else.
+    */
+    return createElement(Animated, {
+      name,
+      size,
+      strokeWidth,
+      className: rest.className,
+      onPointerEnter: rest.onPointerEnter,
+    });
+  }
+
+  return (
+    <StaticGlyph
+      // Spread first: `rest` is SVGProps, whose `size` is `string | number`.
+      // Letting it win would widen the narrowed prop and could also override
+      // an explicit `size` from a call site.
+      {...rest}
+      name={name}
+      size={size}
+      strokeWidth={strokeWidth}
+      onPointerEnter={(event) => {
+        if (hasAnimatedGlyph(name)) setWanted(true);
+        rest.onPointerEnter?.(event);
+      }}
+    />
   );
 }
