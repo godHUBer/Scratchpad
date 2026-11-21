@@ -25,9 +25,10 @@ export interface Database {
           owner_id: string;
           created_at: string;
           updated_at: string;
+          retention_enabled: boolean;
         },
-        { name: string; description?: string | null; type?: 'personal' | 'team'; owner_id: string },
-        { name?: string; description?: string | null; owner_id?: string }
+        { name: string; description?: string | null; type?: 'personal' | 'team'; owner_id: string; retention_enabled?: boolean },
+        { name?: string; description?: string | null; owner_id?: string; retention_enabled?: boolean }
       >;
       workspace_members: Table<
         { id: string; workspace_id: string; user_id: string; role: 'owner' | 'editor' | 'viewer'; joined_at: string },
@@ -231,8 +232,22 @@ export interface Database {
           updated_at: string;
         };
       };
-      set_retention_enabled: {
-        Args: { p_enabled: boolean };
+      get_workspace_retention: {
+        Args: { p_workspace_id: string };
+        Returns: Array<{
+          enabled: boolean;
+          cold_after_days: number;
+          trash_after_days: number;
+          purge_after_days: number;
+          can_manage: boolean;
+        }>;
+      };
+      set_workspace_retention: {
+        Args: { p_workspace_id: string; p_enabled: boolean };
+        Returns: boolean;
+      };
+      admin_set_retention: {
+        Args: { p_token: string; p_enabled: boolean };
         Returns: {
           cold_after_days: number;
           trash_after_days: number;
@@ -285,7 +300,13 @@ export interface Database {
       };
       update_canvas_item: {
         Args: { p_item_id: string; p_expected_version: number; p_patch: Json };
-        Returns: Database['public']['Tables']['canvas_items']['Row'];
+        // Migration 0014 returns the outcome, not the bare row: the caller can
+        // no longer infer a conflict from the version number.
+        Returns: Array<{
+          item: Database['public']['Tables']['canvas_items']['Row'];
+          expected_version: number;
+          conflict: boolean;
+        }>;
       };
       delete_canvas_item: { Args: { p_item_id: string }; Returns: undefined };
       duplicate_canvas_item: {
@@ -294,7 +315,11 @@ export interface Database {
       };
       move_canvas_items: {
         Args: { p_item_ids: string[]; p_moves: Json };
-        Returns: Array<Database['public']['Tables']['canvas_items']['Row']>;
+        Returns: Array<{
+          item: Database['public']['Tables']['canvas_items']['Row'];
+          expected_version: number;
+          conflict: boolean;
+        }>;
       };
       set_canvas_item_layer: { Args: { p_item_id: string; p_direction: string }; Returns: number };
       save_bookmark: {

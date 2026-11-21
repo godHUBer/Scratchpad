@@ -38,6 +38,13 @@ export function AdminPage() {
   const [sortKey, setSortKey] = useState<SortKey>('lastSeen');
   const [sortDir, setSortDir] = useState<SortDirection>('desc');
 
+  // The operator master switch gates the whole retention pipeline; per-workspace
+  // opt-in (migration 0013) decides whose content it may touch.
+  const { session: adminSession, loadRetention } = admin;
+  useEffect(() => {
+    if (adminSession) void loadRetention();
+  }, [adminSession, loadRetention]);
+
   // Search + sort run on the rows the server already returned, so typing is
   // instant and does not hit the database on every keystroke.
   const visibleUsers = useMemo(
@@ -334,6 +341,42 @@ export function AdminPage() {
 
       {tab === 'workspaces' ? (
         <section className="paper p-3">
+          <div className="mb-3 rounded-xl border-2 border-ink/25 bg-cream p-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-extrabold">Retention pipeline</p>
+                <p className="text-xs text-ink-soft">
+                  {admin.policy
+                    ? admin.policy.enabled
+                      ? 'Allowed to run. It still only touches workspaces whose owner switched it on.'
+                      : 'Stopped for the whole deployment. No workspace is cleaned up.'
+                    : 'Loading…'}
+                </p>
+              </div>
+              <span className={`chip ${admin.policy?.enabled ? 'bg-mint' : 'bg-cream-deep'}`}>
+                {admin.policy?.enabled ? 'Enabled' : 'Stopped'}
+              </span>
+            </div>
+            {admin.policy ? (
+              <button
+                type="button"
+                className="btn mt-2 min-h-8 px-3 py-0.5 text-xs"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    await admin.setRetention(!admin.policy?.enabled);
+                  } catch (err) {
+                    toast.error(humanizeError(err));
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                {admin.policy.enabled ? 'Stop the pipeline' : 'Allow the pipeline to run'}
+              </button>
+            ) : null}
+          </div>
           <p className="mb-1 text-[11px] font-bold text-ink-soft sm:hidden">Swipe the table sideways for more →</p>
           <div className="app-scroll overflow-x-auto pb-1" role="region" aria-label="Workspaces" tabIndex={0}>
           <table className="w-full min-w-[40rem] border-collapse text-sm">

@@ -49,6 +49,71 @@ Already followed this shape before the convention was written down:
 - `src/pages/AdminPage.tsx` — the tables. 11 `useState` calls, all of which are
   pure view state (which tab, which dialog is open, the search box).
 
+## Concurrent writes
+
+Canvas mutations are optimistic: the UI applies the change locally, then sends
+the version it *drew from* and lets the server decide. Two rules keep that
+honest.
+
+**The server reports the outcome; the client never infers it.** Both
+`update_canvas_item` and `move_canvas_items` return
+`(item, expected_version, conflict)`. The obvious alternative — compare the
+returned version against the expected one — is wrong in a way that is easy to
+miss. With a local version of 5:
+
+| what happened | update applies? | version returned |
+|---|---|---|
+| our write landed | yes | 6 |
+| one other write landed first | no | 6 |
+
+Identical. The single most common collision is invisible to version arithmetic,
+and an earlier implementation using `version > expected + 1` therefore dropped
+the user's edit while the sync pill read "Saved, 0 conflicts". Any future change
+here must keep the flag: it is knowledge the server has and the client cannot
+reconstruct.
+
+**Drags carry a version too.** `move_canvas_items` used to take none, so a stale
+drag overwrote whatever another editor had done and no return value could have
+revealed it. It now requires one per item and rejects the whole batch if any
+item is stale — a multi-select drag is one gesture, so applying it to half the
+selection would be worse than not applying it at all.
+
+Overwriting is the right *outcome* for a drag (last writer wins on position);
+what matters is that the person whose change lost can see that it lost. Retrying
+automatically would just clobber the other editor in turn.
+
+## Retention and deletion
+
+The 60 → 90 → 100 day pipeline has **two independent gates**, and both must be
+open before a single row is touched:
+
+1. **The workspace opted in.** `workspaces.retention_enabled` defaults to
+   `false`, and only that workspace's owner can flip it
+   (`set_workspace_retention`). Editors can delete individual items; they cannot
+   arm a job that will delete everything nobody has touched in 90 days.
+2. **The operator allowed it.** `retention_policy.enabled` is a deployment-wide
+   master switch, admin-only since migration 0013 (`admin_set_retention`).
+
+`run_retention_sweep` joins `workspaces` on both the trash step *and* the purge
+step, so switching a workspace off genuinely stops deletion rather than merely
+pausing new arrivals in the trash.
+
+**Why this shape.** The original design had one global row holding both the
+thresholds and the switch, and `set_retention_enabled` checked nothing beyond
+"is somebody signed in". Because the row was global, the first authenticated
+user to press the button armed the sweep for *every* tenant on the deployment —
+and the sweep ran unqualified, with no `workspace_id` filter. With open sign-up
+that is a stranger scheduling the deletion of everyone's data. The singleton was
+not a convenience; it was the bug. Anything that makes retention global again
+reintroduces the vulnerability, which is why the client type makes the
+workspace id a required prop rather than reading "the active workspace".
+
+Authorisation is decided on the server and *reported* to the client
+(`get_workspace_retention` returns `can_manage`). Hiding a button is
+presentation; `supabase/tests/sql/11_retention.sql` is what proves the rule,
+including the case where a row's purge date has already passed in a workspace
+that never opted in.
+
 ## Theming
 
 Colours are indirect. `@theme inline` maps every utility (`bg-paper`,

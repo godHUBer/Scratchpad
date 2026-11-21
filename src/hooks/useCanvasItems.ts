@@ -35,7 +35,9 @@ function asCanvasItem(row: Record<string, unknown>): CanvasItem {
  * Owns the canvas item list for one workspace:
  *  - loads rows, subscribes to realtime changes (RLS-filtered by the server)
  *  - every mutation goes through an RPC with an expected version
- *  - a stale write returns the newer row, which we adopt and report as conflict
+ *  - a stale write returns the newer row plus conflict = true; we adopt the
+ *    row and count the conflict. The flag comes from the server because the
+ *    version number alone cannot express this (see migration 0014).
  */
 export function useCanvasItems({ workspaceId, canWrite, onRemoteChange }: UseCanvasItemsOptions) {
   const [items, setItems] = useState<CanvasItem[]>([]);
@@ -270,11 +272,15 @@ export function useCanvasItems({ workspaceId, canWrite, onRemoteChange }: UseCan
             p_patch: patch as never,
           });
           if (rpcError) throw new Error(humanizeError(rpcError));
-          const row = asCanvasItem(data as Record<string, unknown>);
-          if (row.version > current.version + 1) {
-            // someone else wrote in between: adopt their row instead of clobbering
-            setConflicts((n) => n + 1);
-          }
+          // 0014 returns { item, expected_version, conflict }. Use the server's
+          // answer: version arithmetic cannot distinguish "our write landed"
+          // from "one other write landed first" -- both come back as
+          // expected + 1 -- so the old `version > expected + 1` check missed
+          // the most common collision entirely and silently dropped the edit.
+          const [outcome] = (data ?? []) as Array<{ item: Record<string, unknown>; conflict: boolean }>;
+          if (!outcome) throw new Error('The save did not return a result.');
+          const row = asCanvasItem(outcome.item);
+          if (outcome.conflict) setConflicts((n) => n + 1);
           setItems((list) => list.map((item) => (item.id === id ? row : item)));
           return row;
         });
@@ -310,15 +316,32 @@ export function useCanvasItems({ workspaceId, canWrite, onRemoteChange }: UseCan
       );
       try {
         await track(async () => {
+          // Each move carries the version it was drawn from. Before 0014 the
+          // server took no expected version at all, so a drag silently
+          // overwrote whatever another editor had done and no return value
+          // could have revealed it.
           const { data, error: rpcError } = await supabase.rpc('move_canvas_items', {
             p_item_ids: moves.map((m) => m.id),
-            p_moves: moves.map((m) => ({ id: m.id, x: Math.round(m.x), y: Math.round(m.y), w: m.w, h: m.h })) as never,
+            p_moves: moves.map((m) => {
+              const known = itemsRef.current.find((item) => item.id === m.id);
+              return {
+                id: m.id,
+                x: Math.round(m.x),
+                y: Math.round(m.y),
+                w: m.w,
+                h: m.h,
+                version: known?.version ?? 0,
+              };
+            }) as never,
           });
           if (rpcError) throw new Error(humanizeError(rpcError));
-          const rows = (data ?? []).map((row) => asCanvasItem(row as Record<string, unknown>));
-          setItems((list) =>
-            list.map((item) => rows.find((row) => row.id === item.id) ?? item),
-          );
+          const outcomes = (data ?? []) as Array<{ item: Record<string, unknown>; conflict: boolean }>;
+          // The batch is all-or-nothing: if any item was stale the server
+          // applied none of it and returned every row unchanged.
+          const conflicted = outcomes.filter((o) => o.conflict).length;
+          if (conflicted > 0) setConflicts((n) => n + conflicted);
+          const rows = outcomes.map((o) => asCanvasItem(o.item));
+          setItems((list) => list.map((item) => rows.find((row) => row.id === item.id) ?? item));
         });
       } catch (err) {
         setItems((list) => list.map((item) => before.find((old) => old.id === item.id) ?? item));

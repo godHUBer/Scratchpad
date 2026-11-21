@@ -31,6 +31,8 @@ export interface Workspace {
   owner_id: string;
   created_at: string;
   updated_at: string;
+  /** Owner opt-in for the 60 -> 90 -> 100 day cleanup job. Defaults to false. */
+  retention_enabled: boolean;
 }
 
 export interface WorkspaceMember {
