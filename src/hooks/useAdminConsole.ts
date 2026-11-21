@@ -17,6 +17,15 @@ import { readString, writeString, removeKey } from '../lib/storage';
 
 const TOKEN_KEY = 'scratchpad.admin.session';
 
+/** The operator-level retention config (migration 0013). */
+export interface RetentionPolicy {
+  cold_after_days: number;
+  trash_after_days: number;
+  purge_after_days: number;
+  enabled: boolean;
+  updated_at: string;
+}
+
 /** Closed set, so a mistyped RPC name is a compile error rather than a 404. */
 type AdminRpc =
   | 'admin_list_users'
@@ -25,7 +34,8 @@ type AdminRpc =
   | 'admin_delete_user'
   | 'admin_set_password'
   | 'admin_delete_workspace'
-  | 'admin_revoke_sessions';
+  | 'admin_revoke_sessions'
+  | 'admin_set_retention';
 
 /**
  * `admin_login` reports refusals as a `reason` instead of raising, because a
@@ -87,6 +97,7 @@ export function useAdminConsole() {
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [policy, setPolicy] = useState<RetentionPolicy | null>(null);
 
   // Restore a session across reloads. It still has to be valid server-side —
   // a revoked or expired token fails on the first RPC and drops us to the gate.
@@ -222,6 +233,27 @@ export function useAdminConsole() {
     await signOut();
   }, [call, signOut]);
 
+  /**
+   * Operator master switch for the retention pipeline.
+   *
+   * Since migration 0013 this no longer decides *whose* content is deleted --
+   * each workspace owner opts in separately, and the sweep checks that flag per
+   * workspace. This is the deployment-wide "is the job allowed to run at all".
+   */
+  const setRetention = useCallback(
+    async (enabled: boolean) => {
+      const row = await call<RetentionPolicy>('admin_set_retention', { p_enabled: enabled });
+      setPolicy(row);
+    },
+    [call],
+  );
+
+  const loadRetention = useCallback(async () => {
+    const { data, error: rpcError } = await supabase.rpc('get_retention_policy');
+    if (rpcError) return;
+    setPolicy((data as RetentionPolicy | null) ?? null);
+  }, []);
+
   return {
     session,
     users,
@@ -236,5 +268,8 @@ export function useAdminConsole() {
     setPassword,
     deleteWorkspace,
     revokeAdminSessions,
+    policy,
+    loadRetention,
+    setRetention,
   };
 }

@@ -25,9 +25,10 @@ export interface Database {
           owner_id: string;
           created_at: string;
           updated_at: string;
+          retention_enabled: boolean;
         },
-        { name: string; description?: string | null; type?: 'personal' | 'team'; owner_id: string },
-        { name?: string; description?: string | null; owner_id?: string }
+        { name: string; description?: string | null; type?: 'personal' | 'team'; owner_id: string; retention_enabled?: boolean },
+        { name?: string; description?: string | null; owner_id?: string; retention_enabled?: boolean }
       >;
       workspace_members: Table<
         { id: string; workspace_id: string; user_id: string; role: 'owner' | 'editor' | 'viewer'; joined_at: string },
@@ -231,8 +232,22 @@ export interface Database {
           updated_at: string;
         };
       };
-      set_retention_enabled: {
-        Args: { p_enabled: boolean };
+      get_workspace_retention: {
+        Args: { p_workspace_id: string };
+        Returns: Array<{
+          enabled: boolean;
+          cold_after_days: number;
+          trash_after_days: number;
+          purge_after_days: number;
+          can_manage: boolean;
+        }>;
+      };
+      set_workspace_retention: {
+        Args: { p_workspace_id: string; p_enabled: boolean };
+        Returns: boolean;
+      };
+      admin_set_retention: {
+        Args: { p_token: string; p_enabled: boolean };
         Returns: {
           cold_after_days: number;
           trash_after_days: number;

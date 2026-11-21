@@ -89,7 +89,9 @@ Invitation tokens are stored as hashes. Reissuing a link rotates its token and i
 
 Visit **Settings** for profile, connection, session, and auto-cleanup controls. Imported fonts can be added using an HTTPS Google Fonts stylesheet or a direct font URL; imports are saved per device, so teammates must import the font too.
 
-Auto-cleanup ships **paused**. If enabled, the default policy marks inactive content at 60 days, moves it to Trash at 90 days, and permanently purges it at 100 days. Scheduling requires `pg_cron` or an operator-managed scheduler; see the retention migration before enabling it. Permanent deletion cannot be undone.
+Auto-cleanup is **per workspace and off by default**. Each workspace has its own switch, and only that workspace's owner can flip it — a member cannot arm a job that will eventually delete content they do not own. Once an owner opts in, the default policy marks inactive content at 60 days, moves it to Trash at 90 days, and permanently purges it at 100 days; the sweep skips every workspace that has not opted in, including rows already past their purge date.
+
+On top of that, the deployment has one operator master switch: the pipeline does nothing at all until an admin enables it from the admin console's Workspaces tab (`admin_set_retention`). Scheduling still requires `pg_cron` or an operator-managed scheduler; see the retention migrations before enabling it. Permanent deletion cannot be undone.
 
 ## Run locally
 

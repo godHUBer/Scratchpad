@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useWorkspaces } from '../contexts/WorkspaceContext';
@@ -16,7 +16,7 @@ import { Icon } from '../components/ui/Icon';
 
 export function SettingsPage() {
   const { user, profile, updateProfile, signOut } = useAuth();
-  const { workspaces, setActiveWorkspace, refresh } = useWorkspaces();
+  const { workspaces, currentWorkspace, setActiveWorkspace, refresh } = useWorkspaces();
   const toast = useToast();
   const [displayName, setDisplayName] = useState(profile?.display_name ?? '');
   const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url ?? '');
@@ -24,7 +24,15 @@ export function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [signOutOpen, setSignOutOpen] = useState(false);
   const [deleteFor, setDeleteFor] = useState<WorkspaceWithMembership | null>(null);
+  // Auto-cleanup is per-workspace, so the panel needs a target. Default to the
+  // active workspace, fall back to the first one the user can see.
+  const [retentionForId, setRetentionForId] = useState<string | null>(null);
   const config = readAppConfig();
+
+  const retentionWorkspace = useMemo(() => {
+    const chosen = retentionForId ? workspaces.find((w) => w.id === retentionForId) : undefined;
+    return chosen ?? currentWorkspace ?? workspaces[0] ?? null;
+  }, [retentionForId, workspaces, currentWorkspace]);
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -136,7 +144,32 @@ export function SettingsPage() {
         </ul>
       </section>
 
-      <RetentionSettings />
+      {retentionWorkspace ? (
+        <section className="paper p-4">
+          <label className="text-xs font-bold text-ink-soft" htmlFor="retention-workspace">
+            Auto-cleanup settings for
+          </label>
+          <select
+            id="retention-workspace"
+            className="input mt-1 w-full"
+            value={retentionWorkspace.id}
+            onChange={(event) => setRetentionForId(event.target.value)}
+          >
+            {workspaces.map((workspace) => (
+              <option key={workspace.id} value={workspace.id}>
+                {workspace.name} ({roleLabel(workspace.myRole)})
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-ink-soft">
+            Each workspace has its own switch. Turning it on only affects the workspace selected above.
+          </p>
+        </section>
+      ) : null}
+
+      {retentionWorkspace ? (
+        <RetentionSettings workspaceId={retentionWorkspace.id} workspaceName={retentionWorkspace.name} />
+      ) : null}
 
       <section className="paper p-4">
         <h2 className="text-lg font-extrabold">Connection</h2>

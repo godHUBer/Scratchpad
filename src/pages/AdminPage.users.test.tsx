@@ -59,6 +59,11 @@ vi.mock('../hooks/useAdminConsole', () => ({
     setPassword: vi.fn(),
     deleteWorkspace: vi.fn(),
     revokeSessions: vi.fn(),
+    // Retention master switch (migration 0013). Null policy is enough: these
+    // tests are about the user table, and the panel renders a loading line.
+    policy: null,
+    loadRetention: vi.fn(),
+    setRetention: vi.fn(),
   }),
 }));
 
