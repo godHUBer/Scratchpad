@@ -38,14 +38,36 @@ jobs:
         run: npm test
 
       - name: Production build (GitHub Pages base path)
-        run: npm run build
+        # Optional overrides for the public Supabase values committed in
+        # .env.production (repo variables of the same name win when set).
+        #
+        # They are handed over under NON-VITE names and exported conditionally,
+        # because that is the only correct way to do it. An unset repository
+        # variable expands to the empty string, and Vite treats an empty env var
+        # as set: it inlines "" and overrides .env.production. Mapping
+        # `VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}` directly therefore
+        # built a bundle with no Supabase URL, the check below correctly
+        # rejected it, and this job failed on every single run. A "fallback"
+        # expression does not help: `${{ vars.X || '' }}` still defines the
+        # variable, which is the whole problem. Only leaving it undefined works.
         env:
-          # Optional overrides. When a repository variable is unset it expands to
-          # an empty string and Vite would inline "" over .env.production, so
-          # only pass through the ones that are actually set.
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          OVERRIDE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          OVERRIDE_SUPABASE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          if [ -n "$OVERRIDE_SUPABASE_URL" ]; then
+            export VITE_SUPABASE_URL="$OVERRIDE_SUPABASE_URL"
+            echo "using repository override for VITE_SUPABASE_URL"
+          else
+            echo "no override; .env.production supplies VITE_SUPABASE_URL"
+          fi
+          if [ -n "$OVERRIDE_SUPABASE_KEY" ]; then
+            export VITE_SUPABASE_PUBLISHABLE_KEY="$OVERRIDE_SUPABASE_KEY"
+            echo "using repository override for VITE_SUPABASE_PUBLISHABLE_KEY"
+          else
+            echo "no override; .env.production supplies VITE_SUPABASE_PUBLISHABLE_KEY"
+          fi
+          npm run build
 
       - name: The bundle must contain a real Supabase configuration
         # A build with an empty URL renders the "not configured" screen on the

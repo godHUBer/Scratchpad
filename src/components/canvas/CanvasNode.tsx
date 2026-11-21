@@ -1,7 +1,7 @@
 import Konva from 'konva';
 import { Ellipse, Group, Line, Rect, Text } from 'react-konva';
 import type { Bookmark, CanvasItem, MediaAsset } from '../../types';
-import { arrowPoints, asShape, polygonPoints } from '../../lib/shapes';
+import { arrowPoints, asShape, ellipseCentre, ellipseTopLeft, polygonPoints } from '../../lib/shapes';
 import { BookmarkCardBody } from './BookmarkCardBody';
 import { MediaCardBody } from './MediaCardBody';
 
@@ -70,14 +70,30 @@ export function CanvasNode({
       const fill = filled ? `${color}33` : undefined;
 
       if (shape.shape === 'ellipse') {
+        /*
+          Konva positions an Ellipse by its CENTRE, while `position_x/y` is the
+          item's top-left (and every other shape here is drawn from its
+          top-left). Both the prop and the drag report have to translate:
+
+          Reporting the raw node position made the canvas compute a delta from
+          the centre as if it were the corner, so an ellipse jumped forward by
+          half its own width and height the first time it was dragged. The
+          `common` handlers are overridden rather than reused for that reason.
+        */
+        const size = { width: item.width, height: item.height };
+        const centre = ellipseCentre({ x: item.position_x, y: item.position_y }, size);
         return (
           <Ellipse
             {...common}
-            x={item.position_x + item.width / 2}
-            y={item.position_y + item.height / 2}
+            x={centre.x}
+            y={centre.y}
             radiusX={item.width / 2}
             radiusY={item.height / 2}
             fill={fill}
+            onDragEnd={(event: Konva.KonvaEventObject<DragEvent>) => {
+              const topLeft = ellipseTopLeft({ x: event.target.x(), y: event.target.y() }, size);
+              onDragEnd?.(item.id, topLeft.x, topLeft.y);
+            }}
           />
         );
       }

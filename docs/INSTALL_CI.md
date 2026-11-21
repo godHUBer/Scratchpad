@@ -116,6 +116,13 @@ different Supabase project, add **Settings → Secrets and variables → Actions
 If you set neither, the build uses `.env.production`. Leave them unset rather than empty —
 an empty variable would inline `""` over the working values.
 
+The workflow handles this for you: it reads these into non-`VITE_` names and exports the
+`VITE_` ones only when they are non-empty, so an unset variable leaves Vite to read
+`.env.production`. Earlier versions mapped them directly onto the build environment, which
+expanded to `""`, overrode the committed values and made the workflow fail on every run —
+including on a fresh clone with no variables configured. `src/lib/ciEnv.test.ts` now fails
+the build if that construct comes back.
+
 ---
 
 ## Verifying it took

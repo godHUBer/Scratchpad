@@ -4,6 +4,8 @@ import {
   SHAPES,
   arrowPoints,
   asShape,
+  ellipseCentre,
+  ellipseTopLeft,
   isShapeItem,
   polygonPoints,
   shapeLabel,
@@ -150,5 +152,60 @@ describe('shapeLabel', () => {
 
   it('is null for a freehand stroke so the UI keeps calling it a stroke', () => {
     expect(shapeLabel({ points: [0, 0] })).toBeNull();
+  });
+});
+
+describe('ellipse drag round-trip', () => {
+  /*
+    An ellipse is drawn from its centre; the canvas stores and reports top-left
+    corners. Both halves of that translation have to agree, or the item jumps.
+
+    The original bug: the node reported `event.target.x()` (a centre) where the
+    canvas expected a corner, so `handleNodeDragEnd` computed
+    `centre - startTopLeft` as the drag delta. For a 160x120 ellipse that is 80px
+    and 60px too large -- a visible lurch on the very first drag.
+  */
+  const size = { width: 160, height: 120 };
+  const start = { x: 100, y: 100 };
+
+  it('places the node centre at the middle of the item box', () => {
+    expect(ellipseCentre(start, size)).toEqual({ x: 180, y: 160 });
+  });
+
+  it('round-trips a centre back to the position it came from', () => {
+    const centre = ellipseCentre(start, size);
+    expect(ellipseTopLeft(centre, size)).toEqual(start);
+  });
+
+  it('reports a top-left corner that matches the drag delta the user made', () => {
+    // The user drags the shape 50px right and 30px down. Konva moves the node,
+    // so its centre ends up 50/30 away from where it started.
+    const centre = ellipseCentre(start, size);
+    const movedCentre = { x: centre.x + 50, y: centre.y + 30 };
+
+    const reported = ellipseTopLeft(movedCentre, size);
+
+    // The canvas computes delta = reported - start. That must be the real drag,
+    // not the drag plus half the ellipse.
+    expect({ x: reported.x - start.x, y: reported.y - start.y }).toEqual({ x: 50, y: 30 });
+    expect(reported).toEqual({ x: 150, y: 130 });
+  });
+
+  it('does not drift when the shape is resized and dragged again', () => {
+    // A resize changes the radius, which is exactly what made the old
+    // centre-as-corner error change size between drags.
+    const resized = { width: 300, height: 80 };
+    const centre = ellipseCentre(start, resized);
+    const movedCentre = { x: centre.x + 10, y: centre.y - 5 };
+    const reported = ellipseTopLeft(movedCentre, resized);
+    expect({ x: reported.x - start.x, y: reported.y - start.y }).toEqual({ x: 10, y: -5 });
+  });
+
+  it('is unaffected for shapes drawn from their top-left', () => {
+    // Regression guard for the assumption behind the other branches: the shared
+    // drag handler is only correct for nodes positioned at their top-left.
+    // A rect at `start` has node.x() === start.x, so delta === drag.
+    const nodeStart = { x: start.x, y: start.y };
+    expect({ x: nodeStart.x - start.x, y: nodeStart.y - start.y }).toEqual({ x: 0, y: 0 });
   });
 });

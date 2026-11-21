@@ -145,3 +145,27 @@ export function shapeLabel(content: unknown): string | null {
   if (!shape) return null;
   return SHAPES.find((s) => s.kind === shape.shape)?.label ?? 'Shape';
 }
+
+/**
+ * Where an ellipse's Konva node sits, given the item's top-left position.
+ *
+ * Konva positions an Ellipse by its centre; every other shape in this file is
+ * drawn from its top-left, and `position_x/y` is always the top-left. Keeping
+ * this translation in one place is what stops the renderer and the drag handler
+ * from disagreeing about which point they are talking about.
+ */
+export function ellipseCentre(position: { x: number; y: number }, size: { width: number; height: number }) {
+  return { x: position.x + size.width / 2, y: position.y + size.height / 2 };
+}
+
+/**
+ * The inverse: turn a dragged ellipse's centre back into a top-left position.
+ *
+ * The canvas reports drags as top-left corners -- `handleNodeDragEnd` computes
+ * `reported - start.position` -- so an ellipse that reported its raw centre made
+ * the drag delta too large by exactly half the ellipse. It lurched forward by
+ * that amount on the first drag and the error compounded on every later one.
+ */
+export function ellipseTopLeft(centre: { x: number; y: number }, size: { width: number; height: number }) {
+  return { x: centre.x - size.width / 2, y: centre.y - size.height / 2 };
+}
