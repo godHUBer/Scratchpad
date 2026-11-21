@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { isStaleChunkError, reloadForNewBuild, reloadRecentlyAttempted } from '../lib/staleBuild';
 
 interface Props {
   children: ReactNode;
@@ -28,6 +29,48 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     const { error } = this.state;
     if (!error) return this.props.children;
+
+    /*
+     * A rejected `lazy()` import lands here as a render error. That is not a
+     * bug in the page — it is a page from an older build asking for a chunk the
+     * new deployment no longer has — so offer the recovery that actually works
+     * and say what happened, instead of "hit a snag, try reloading".
+     */
+    if (isStaleChunkError(error)) {
+      const stuck = reloadRecentlyAttempted();
+      return (
+        <div className="grid min-h-dvh place-items-center bg-cream p-4 text-ink">
+          <div className="paper w-full max-w-lg space-y-3 p-5">
+            <h1 className="text-xl font-black">Scratchpad was updated</h1>
+            <p className="text-sm text-ink-soft">
+              This page was opened before the latest version was deployed, and the part it needs has
+              been replaced. {stuck ? 'Reloading automatically already failed once, so' : ''} reload
+              with the new version to continue — your work is saved on the server, not in this tab.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  // A plain reload can be answered from the HTTP cache with the
+                  // same stale document, which is why this must bypass it.
+                  if (!reloadForNewBuild()) window.location.reload();
+                }}
+              >
+                Load the new version
+              </button>
+              <a className="btn" href={import.meta.env.BASE_URL}>
+                Back to start
+              </a>
+            </div>
+            <p className="text-[11px] text-ink-soft">
+              If this keeps happening, the deployment may be incomplete — the page is asking for a
+              file that is not on the server.
+            </p>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="grid min-h-dvh place-items-center bg-cream p-4 text-ink">

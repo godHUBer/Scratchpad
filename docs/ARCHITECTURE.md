@@ -49,6 +49,32 @@ Already followed this shape before the convention was written down:
 - `src/pages/AdminPage.tsx` — the tables. 11 `useState` calls, all of which are
   pure view state (which tab, which dialog is open, the search box).
 
+## Stale builds
+
+Routes are lazily imported, so the entry bundle requests each page by a content
+hash (`SignInPage-<hash>.js`). A deploy replaces `assets/` wholesale and the new
+`index.html` names new hashes. A tab that is still running the previous build —
+or one served a cached `index.html` — then asks for a file that no longer
+exists:
+
+    TypeError: Failed to fetch dynamically imported module: .../SignInPage-COyBPllt.js
+
+Nothing is wrong with the deployment; two builds of the app are alive at once.
+
+**A plain reload does not fix this.** GitHub Pages serves `index.html` with a
+cache lifetime, so re-requesting the document can be answered from the browser
+cache with the *same* stale build and the *same* dead hash. `src/lib/staleBuild.ts`
+therefore reloads with a cache-busting parameter, preserving the hash so the
+`HashRouter` route survives, and refuses to do it twice within 30 seconds — a
+reload loop is worse than an explanation. `main.tsx` clears the guard once React
+mounts, which proves the browser has a coherent build.
+
+Detection has two paths because Vite only fires `vite:preloadError` for its own
+preloads; a `lazy()` rejection surfaces as a plain unhandled rejection, and the
+`ErrorBoundary` catches it as a render error. Both route through the same
+matcher, and that matcher must stay narrow: reloading on an ordinary exception
+would throw away unsaved canvas work for nothing.
+
 ## Concurrent writes
 
 Canvas mutations are optimistic: the UI applies the change locally, then sends
