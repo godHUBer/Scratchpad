@@ -1,8 +1,9 @@
 {
   "$schema": "Budget in gzipped kB. Regenerate with --update.",
+  "$note": "total raised 335 -> 400 when the animated icon chunk (~55 kB: motion) was added. It is fetched only on first icon hover, so entry and single are unchanged; total counts it because it is still JavaScript a user may download.",
   "maxGzipKb": {
     "entry": 160,
-    "total": 335,
+    "total": 400,
     "single": 160
   }
 }

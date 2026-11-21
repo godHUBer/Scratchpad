@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { render } from '@testing-library/react';
 import { Icon, type IconName } from './Icon';
+import { BORROWED } from './icons/borrowed';
 
 /**
  * Structural checks for the icon set.
@@ -32,17 +33,26 @@ describe('Icon set', () => {
     expect(new Set(EXPECTED).size).toBe(29);
   });
 
-  it.each(EXPECTED)('%s renders one <path> with real geometry', (name) => {
-    // Rule 5 in Icon.tsx: a single <path>, so the whole glyph is one element.
+  it.each(EXPECTED)('%s renders real geometry', (name) => {
+    /*
+      Borrowed glyphs are genuinely several strokes (a bin lid is not part of
+      the bin body's path), and keeping them separate is what lets one part
+      animate. Hand-drawn glyphs remain a single path, so the count is asserted
+      against the shape of the source rather than a fixed 1.
+    */
     const { container } = render(<Icon name={name} />);
-    const paths = container.querySelectorAll('path');
-    expect(paths).toHaveLength(1);
-    const d = paths[0]?.getAttribute('d') ?? '';
-    expect(d.length).toBeGreaterThan(10);
-    expect(d.startsWith('M')).toBe(true);
-    expect(d).not.toMatch(/NaN|undefined|Infinity/);
-    // An unclosed statement or a stray comma renders nothing at all.
-    expect(d).not.toMatch(/[,]{2}/);
+    const paths = Array.from(container.querySelectorAll('path'));
+    const expectedCount = BORROWED[name]?.paths.length ?? 1;
+    expect(paths).toHaveLength(expectedCount);
+    expect(paths.length).toBeGreaterThan(0);
+    for (const path of paths) {
+      const d = path.getAttribute('d') ?? '';
+      expect(d.length).toBeGreaterThan(4);
+      expect(d.startsWith('M') || d.startsWith('m')).toBe(true);
+      expect(d).not.toMatch(/NaN|undefined|Infinity/);
+      // An unclosed statement or a stray comma renders nothing at all.
+      expect(d).not.toMatch(/[,]{2}/);
+    }
   });
 
   it('does not ship the same geometry under two names', () => {
@@ -51,7 +61,11 @@ describe('Icon set', () => {
     const seen = new Map<string, IconName>();
     for (const name of EXPECTED) {
       const { container } = render(<Icon name={name} />);
-      const d = container.querySelector('path')?.getAttribute('d') ?? '';
+      // Whole glyph: concatenating every path, so a multi-stroke icon cannot
+      // hide a duplicate by differing only in its first stroke.
+      const d = Array.from(container.querySelectorAll('path'))
+        .map((p) => p.getAttribute('d') ?? '')
+        .join('|');
       const prior = seen.get(d);
       expect(prior, `${name} is identical to ${prior}`).toBeUndefined();
       seen.set(d, name);
