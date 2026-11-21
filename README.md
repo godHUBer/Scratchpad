@@ -185,7 +185,11 @@ deployment/workflows/ Workflow templates, including optional PR CI
 scripts/qa/            Optional browser QA harness
 ```
 
-Content reads are scoped by workspace membership through RLS; content mutations use database RPCs with role checks. Presence uses private Realtime channels. Canvas item updates include a version check, though not every operation has the same conflict guarantees. Test authorization against a real database before trusting a new deployment.
+Content reads are scoped by workspace membership through RLS; content mutations use database RPCs with role checks. Presence uses private Realtime channels.
+
+Canvas writes are optimistically concurrent. Every update and every move carries the version it was drawn from, and the RPC reports back whether the write landed or whether someone else got there first — the caller never infers that from the version number, because a clean write and a single interfering write are indistinguishable by arithmetic. A collision adopts the other editor's row and increments the sync pill's conflict count rather than overwriting silently. Multi-item drags are all-or-nothing: if any card moved underneath the gesture, none of them are applied. Layer changes and deletes are last-writer-wins.
+
+Test authorization against a real database before trusting a new deployment.
 
 ### Admin console
 

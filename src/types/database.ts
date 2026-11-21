@@ -300,7 +300,13 @@ export interface Database {
       };
       update_canvas_item: {
         Args: { p_item_id: string; p_expected_version: number; p_patch: Json };
-        Returns: Database['public']['Tables']['canvas_items']['Row'];
+        // Migration 0014 returns the outcome, not the bare row: the caller can
+        // no longer infer a conflict from the version number.
+        Returns: Array<{
+          item: Database['public']['Tables']['canvas_items']['Row'];
+          expected_version: number;
+          conflict: boolean;
+        }>;
       };
       delete_canvas_item: { Args: { p_item_id: string }; Returns: undefined };
       duplicate_canvas_item: {
@@ -309,7 +315,11 @@ export interface Database {
       };
       move_canvas_items: {
         Args: { p_item_ids: string[]; p_moves: Json };
-        Returns: Array<Database['public']['Tables']['canvas_items']['Row']>;
+        Returns: Array<{
+          item: Database['public']['Tables']['canvas_items']['Row'];
+          expected_version: number;
+          conflict: boolean;
+        }>;
       };
       set_canvas_item_layer: { Args: { p_item_id: string; p_direction: string }; Returns: number };
       save_bookmark: {
