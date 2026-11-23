@@ -19,7 +19,13 @@ interface CanvasNodeProps {
   selected: boolean;
   canInteract: boolean;
   onSelect: (id: string, additive: boolean) => void;
-  onDragStart?: (id: string) => void;
+  /**
+   * `x`/`y` are the node's own origin at the moment the drag begins, which the
+   * canvas uses to preserve the grab offset. Renderers whose node origin is a
+   * centre (the ellipse) pass their top-left instead, so the canvas never has to
+   * know which primitive it is talking to.
+   */
+  onDragStart?: (id: string, x?: number, y?: number) => void;
   onDragEnd?: (id: string, x: number, y: number) => void;
   onDoubleClick: (item: CanvasItem) => void;
   /** CSS font stack for text/note items; mirrors the DOM editor exactly. */
@@ -52,7 +58,7 @@ export function CanvasNode({
         strokeWidth,
         listening: canInteract,
         draggable: canInteract,
-        onDragStart: () => onDragStart?.(item.id),
+        onDragStart: () => onDragStart?.(item.id, item.position_x, item.position_y),
         onDragEnd: (event: Konva.KonvaEventObject<DragEvent>) =>
           onDragEnd?.(item.id, event.target.x(), event.target.y()),
         onClick: (event: Konva.KonvaEventObject<MouseEvent>) => {
@@ -98,6 +104,25 @@ export function CanvasNode({
         );
       }
 
+      if (shape.shape === 'rect' || shape.shape === 'roundedRect') {
+        /*
+          Drawn as a Rect rather than a four-point Line so `roundedRect` can use
+          Konva's cornerRadius. A plain rectangle still goes through this branch,
+          which also keeps its mousedown area honest: a Line only hit-tests its
+          stroke, so the inside of an unfilled rectangle was previously clickable
+          only on its border.
+        */
+        return (
+          <Rect
+            {...common}
+            width={item.width}
+            height={item.height}
+            cornerRadius={shape.shape === 'roundedRect' ? Math.min(28, item.width / 5, item.height / 5) : 0}
+            fill={fill}
+          />
+        );
+      }
+
       if (shape.shape === 'arrow') {
         return (
           <Line
@@ -113,6 +138,79 @@ export function CanvasNode({
       }
 
       const points = polygonPoints(shape.shape, item.width, item.height).flat();
+      /*
+        A line is the one polygon that is not closed. Everything else joins its
+        last vertex to its first; closing a line would draw a second stroke back
+        over itself and, when filled, paint a degenerate sliver.
+      */
+      const isOpen = shape.shape === 'line';
+      if (isOpen) {
+        // Drawn corner-to-corner, matching how MS Paint's line tool follows the
+        // drag rather than forcing a horizontal or vertical axis.
+        return (
+          <Line
+            {...common}
+            points={[0, 0, item.width, item.height]}
+            lineCap="round"
+            hitStrokeWidth={Math.max(20, strokeWidth + 12)}
+          />
+        );
+      }
+      if (shape.shape === 'cylinder') {
+        /*
+          A cylinder is a rectangle plus two elliptical caps. Konva has no
+          primitive for the union, so the caps are separate Ellipse nodes inside
+          a Group; `common` already makes the whole group draggable, so the caps
+          do not need their own handlers.
+        */
+        const capRy = Math.max(4, Math.min(item.height / 6, 24));
+        return (
+          <Group
+            x={item.position_x}
+            y={item.position_y}
+            draggable={canInteract}
+            onDragStart={(event) => onDragStart?.(item.id, event.target.x(), event.target.y())}
+            onDragEnd={(event: Konva.KonvaEventObject<DragEvent>) =>
+              onDragEnd?.(item.id, event.target.x(), event.target.y())
+            }
+            onClick={(event: Konva.KonvaEventObject<MouseEvent>) => {
+              event.cancelBubble = true;
+              onSelect(item.id, event.evt.shiftKey);
+            }}
+            onTap={() => onSelect(item.id, false)}
+            name={`item-${item.id}`}
+          >
+            <Rect
+              width={item.width}
+              height={item.height}
+              stroke={color}
+              strokeWidth={strokeWidth}
+              fill={fill}
+              listening={false}
+            />
+            <Ellipse
+              x={item.width / 2}
+              y={capRy}
+              radiusX={item.width / 2}
+              radiusY={capRy}
+              stroke={color}
+              strokeWidth={strokeWidth}
+              fill={fill}
+              listening={false}
+            />
+            <Ellipse
+              x={item.width / 2}
+              y={item.height - capRy}
+              radiusX={item.width / 2}
+              radiusY={capRy}
+              stroke={color}
+              strokeWidth={strokeWidth}
+              fill={fill}
+              listening={false}
+            />
+          </Group>
+        );
+      }
       return (
         <Line
           {...common}
@@ -138,7 +236,7 @@ export function CanvasNode({
         y={item.position_y}
         listening={canInteract}
         draggable={canInteract}
-        onDragStart={() => onDragStart?.(item.id)}
+        onDragStart={(event) => onDragStart?.(item.id, event.target.x(), event.target.y())}
         onDragEnd={(event) => onDragEnd?.(item.id, event.target.x(), event.target.y())}
         onClick={(event) => {
           event.cancelBubble = true;
@@ -163,7 +261,7 @@ export function CanvasNode({
       x={item.position_x}
       y={item.position_y}
       draggable={canInteract}
-      onDragStart={() => onDragStart?.(item.id)}
+      onDragStart={(event) => onDragStart?.(item.id, event.target.x(), event.target.y())}
       onDragEnd={(event) => onDragEnd?.(item.id, event.target.x(), event.target.y())}
       name={`item-${item.id}`}
     >

@@ -62,6 +62,31 @@ export interface TextContent {
   fontFamily?: string;
   z?: number;
 }
+/**
+ * Every shape the paint toolbox can draw.
+ *
+ * Kept as a plain union rather than derived from a list, so the compiler rejects
+ * a `shape` that no renderer handles. Adding one means: a member here, geometry
+ * in `polygonPoints`, a toolbox entry in `SHAPES`, and a renderer branch if it is
+ * not a plain polygon.
+ */
+export type ShapeKind =
+  | 'line'
+  | 'rect'
+  | 'roundedRect'
+  | 'ellipse'
+  | 'triangle'
+  | 'rightTriangle'
+  | 'diamond'
+  | 'trapezoid'
+  | 'parallelogram'
+  | 'pentagon'
+  | 'hexagon'
+  | 'octagon'
+  | 'cylinder'
+  | 'star'
+  | 'arrow';
+
 export interface DrawContent {
   points?: number[];
   color?: string;
@@ -71,8 +96,13 @@ export interface DrawContent {
    * Shapes share the `draw` item type rather than getting their own, because
    * `canvas_items.item_type` is constrained by a CHECK and adding a value means
    * a migration. See src/lib/shapes.ts. When present, `points` is absent.
+   *
+   * The union lives here, not in shapes.ts, because both need it and shapes.ts
+   * already imports from this file — defining it in both places meant adding a
+   * shape to the toolbox produced a type error in the page and a silent "not a
+   * shape" in the renderer. `ShapeKind` in shapes.ts is an alias for this.
    */
-  shape?: 'rect' | 'ellipse' | 'triangle' | 'diamond' | 'arrow' | 'star';
+  shape?: ShapeKind;
   filled?: boolean;
 }
 export interface CardContent {

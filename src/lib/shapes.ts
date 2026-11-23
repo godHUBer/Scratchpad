@@ -16,9 +16,17 @@
  * The cost is one branch in the renderer, which is cheaper than a migration and
  * is honest about what the data is.
  */
-import type { CanvasItemType } from '../types';
+import type { CanvasItemType, ShapeKind } from '../types';
 
-export type ShapeKind = 'rect' | 'ellipse' | 'triangle' | 'diamond' | 'arrow' | 'star';
+/**
+ * Re-exported from ../types, which is where it is declared.
+ *
+ * The union used to be written out here as well as in the item's content type.
+ * Two copies drifted the moment shapes were added: the toolbox and geometry knew
+ * about a new shape, the stored-content type did not, and the compiler pointed at
+ * the page rather than at the duplication.
+ */
+export type { ShapeKind } from '../types';
 
 export interface ShapeSpec {
   kind: ShapeKind;
@@ -27,10 +35,19 @@ export interface ShapeSpec {
 
 /** Offered in the toolbox, in the order they appear. */
 export const SHAPES: ShapeSpec[] = [
+  { kind: 'line', label: 'Line' },
   { kind: 'rect', label: 'Rectangle' },
+  { kind: 'roundedRect', label: 'Rounded rectangle' },
   { kind: 'ellipse', label: 'Ellipse' },
   { kind: 'triangle', label: 'Triangle' },
+  { kind: 'rightTriangle', label: 'Right triangle' },
   { kind: 'diamond', label: 'Diamond' },
+  { kind: 'trapezoid', label: 'Trapezoid' },
+  { kind: 'parallelogram', label: 'Parallelogram' },
+  { kind: 'pentagon', label: 'Pentagon' },
+  { kind: 'hexagon', label: 'Hexagon' },
+  { kind: 'octagon', label: 'Octagon' },
+  { kind: 'cylinder', label: 'Cylinder' },
   { kind: 'star', label: 'Star' },
   { kind: 'arrow', label: 'Arrow' },
 ];
@@ -106,6 +123,63 @@ export function polygonPoints(kind: ShapeKind, width: number, height: number): A
       }
       return points;
     }
+    case 'line':
+      // A line is two points, drawn open. Sharing the polygon renderer keeps
+      // one code path: the renderer skips `closed` for this kind.
+      return [
+        [0, 0],
+        [w, h],
+      ];
+    case 'roundedRect':
+      // The corners are rounded by the renderer's cornerRadius; the vertices are
+      // the same as a rectangle so hit-testing and bounds agree.
+      return [
+        [0, 0],
+        [w, 0],
+        [w, h],
+        [0, h],
+      ];
+    case 'rightTriangle':
+      return [
+        [0, 0],
+        [0, h],
+        [w, h],
+      ];
+    case 'trapezoid': {
+      // Sloped by a sixth of the width, which reads as a trapezoid at any size
+      // without the top vanishing on a narrow box.
+      const inset = w / 6;
+      return [
+        [inset, 0],
+        [w - inset, 0],
+        [w, h],
+        [0, h],
+      ];
+    }
+    case 'parallelogram': {
+      const skew = w / 5;
+      return [
+        [skew, 0],
+        [w, 0],
+        [w - skew, h],
+        [0, h],
+      ];
+    }
+    case 'pentagon':
+      return regularPolygon(5, w, h);
+    case 'hexagon':
+      return regularPolygon(6, w, h);
+    case 'octagon':
+      return regularPolygon(8, w, h);
+    case 'cylinder':
+      // The body is a rectangle; the renderer draws the two elliptical caps on
+      // top so the shape reads as a tube rather than a box.
+      return [
+        [0, 0],
+        [w, 0],
+        [w, h],
+        [0, h],
+      ];
     case 'arrow':
       // Arrows are stroked, not filled; the shaft is handled by arrowPoints.
       return [];
@@ -113,6 +187,26 @@ export function polygonPoints(kind: ShapeKind, width: number, height: number): A
       // Ellipses are drawn with an Ellipse node, not a polygon.
       return [];
   }
+}
+
+/**
+ * A regular n-gon inscribed in the item's box.
+ *
+ * Uses half-width and half-height as separate radii, so a shape stretched into a
+ * wide rectangle becomes a stretched polygon rather than a circle-shaped one
+ * floating in the middle of the box. Starts at -90° so a pentagon points up.
+ */
+function regularPolygon(sides: number, width: number, height: number): Array<[number, number]> {
+  const cx = width / 2;
+  const cy = height / 2;
+  const rx = width / 2;
+  const ry = height / 2;
+  const points: Array<[number, number]> = [];
+  for (let i = 0; i < sides; i += 1) {
+    const angle = (Math.PI * 2 * i) / sides - Math.PI / 2;
+    points.push([cx + Math.cos(angle) * rx, cy + Math.sin(angle) * ry]);
+  }
+  return points;
 }
 
 /** True when the item is a shape rather than a freehand stroke. */

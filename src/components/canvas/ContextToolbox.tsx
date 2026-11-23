@@ -7,6 +7,7 @@ import { hostnameOf, pluralize } from '../../lib/format';
 import { Icon } from '../ui/Icon';
 import { FontPicker } from './FontPicker';
 import { polygonPoints, SHAPES, type ShapeKind } from '../../lib/shapes';
+import { DEFAULT_FONT } from '../../lib/fonts';
 
 interface ContextToolboxProps {
   tool: Tool;
@@ -319,7 +320,7 @@ function SingleItem({
 
       {(item.item_type === 'text' || item.item_type === 'note') && (
         <div className="rounded-xl border-2 border-ink/30 bg-cream/60 p-2">
-          <p className="line-clamp-4 text-xs font-semibold">{item.content.text || 'Empty text'}</p>
+          <p className="line-clamp-4 text-xs font-semibold">{item.content?.text || 'Empty text'}</p>
           <button type="button" className="btn mt-2 min-h-8 w-full px-2 py-0.5 text-xs" disabled={!canWrite} onClick={() => onEditText(item)}>
             Edit text
           </button>
@@ -327,7 +328,7 @@ function SingleItem({
             <div className="mt-2">
               <FontPicker
                 compact
-                value={item.content.fontFamily}
+                value={item.content?.fontFamily ?? DEFAULT_FONT}
                 onChange={(family) => onChangeFont(item, family)}
               />
             </div>
@@ -471,6 +472,37 @@ function ShapeGlyph({ kind }: { kind: ShapeKind }) {
     return (
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
         <path d={`M2 ${h / 2} H${w - 2} M${w - 7} ${h / 2 - 4} L${w - 2} ${h / 2} L${w - 7} ${h / 2 + 4}`} {...stroke} />
+      </svg>
+    );
+  }
+
+  if (kind === 'line') {
+    // A closed polygon would draw a hairline triangle; the toolbox button for
+    // "Line" has to actually look like one.
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
+        <line x1={2} y1={h - 3} x2={w - 2} y2={3} {...stroke} />
+      </svg>
+    );
+  }
+
+  if (kind === 'cylinder') {
+    // Two caps and a body, the same construction the canvas renderer uses.
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
+        <path
+          d={`M2 6 v${h - 12} a${w / 2 - 2} 3 0 0 0 ${w - 4} 0 v-${h - 12}`}
+          {...stroke}
+        />
+        <ellipse cx={w / 2} cy={6} rx={w / 2 - 2} ry={3} {...stroke} />
+      </svg>
+    );
+  }
+
+  if (kind === 'roundedRect') {
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden>
+        <rect x={1} y={2} width={w - 2} height={h - 4} rx={5} {...stroke} />
       </svg>
     );
   }
