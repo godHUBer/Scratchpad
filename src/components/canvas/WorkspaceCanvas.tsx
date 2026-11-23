@@ -24,6 +24,7 @@ import type { Bookmark, CanvasItem, MediaAsset } from '../../types';
 import type { NewCanvasItem } from '../../hooks/useCanvasItems';
 import { clamp } from '../../lib/format';
 import { fontStack } from '../../lib/fonts';
+import { isShapeItem } from '../../lib/shapes';
 import { visibleCentre } from './placement';
 
 const CARD_TYPES = ['image', 'audio', 'video', 'media_link', 'bookmark'] as const;
@@ -198,11 +199,46 @@ export function WorkspaceCanvas({
   };
 
   // ------------------------------------------------------------- wheel/pinch
+  /*
+    Wheel over a text box resizes its type; wheel anywhere else zooms the canvas.
+
+    Reported as a missing feature ("if I hover the mouse over it and scroll, it
+    should increase font size"). The canvas already owned the wheel event, so the
+    behaviour belongs here rather than on a DOM listener: this way it composes
+    with zoom, ignores a trackpad pinch (ctrlKey, which is a zoom gesture and
+    would otherwise fight the font resize), and needs no extra hit-testing.
+
+    The text is found from the node under the pointer. Konva reports the hovered
+    shape, and both the box's Rect and its label carry the item name, so a wheel
+    over the glyph or over the padding behaves the same.
+  */
   const onWheel = (event: Konva.KonvaEventObject<WheelEvent>) => {
     event.evt.preventDefault();
     const stage = event.target.getStage();
     const pointer = stage?.getPointerPosition() ?? { x: 0, y: 0 };
     const isPinch = event.evt.ctrlKey;
+
+    if (!isPinch) {
+      const hovered = stage && pointer ? stage.getIntersection(pointer) : null;
+      const hoveredId = hovered ? findItemIdForNode(hovered) : null;
+      const target = hoveredId ? api.items.find((item) => item.id === hoveredId) : null;
+      if (hoveredId && target && (target.item_type === 'text' || target.item_type === 'note') && canWrite) {
+        // One notch per wheel step, in the direction of travel. Clamped to a
+        // range a canvas can actually show rather than the browser's limits.
+        const step = event.evt.deltaY < 0 ? 2 : -2;
+        const current = target.content?.fontSize ?? 20;
+        const next = Math.round(Math.min(160, Math.max(8, current + step)));
+        if (next !== current) {
+          // Optimistic: patchItem updates locally before the RPC resolves, so
+          // the type follows the wheel without waiting on the network.
+          void api.patchItem(hoveredId, { content: { ...target.content, fontSize: next } }).catch((err: unknown) => {
+            onError(err instanceof Error ? err.message : 'Could not resize the text.');
+          });
+        }
+        return;
+      }
+    }
+
     const factor = isPinch ? 1 - event.evt.deltaY * 0.01 : 1 - event.evt.deltaY * 0.0015;
     setViewport((current) => zoomAtPoint(current, pointer, current.scale * clamp(factor, 0.5, 2)));
   };
@@ -385,6 +421,74 @@ export function WorkspaceCanvas({
     }
   };
 
+  /*
+    Marquee commit.
+
+    Two separate bugs lived in the original three lines, and the reported symptom
+    — "a box appears, but it selects nothing" — was one of them masking the other.
+
+    1. The commit read the `marquee` *state* captured by the closure that
+       onMouseUp was created in. State updates are asynchronous, so if the pointer
+       was released before the last setMarquee had re-rendered, that closure still
+       held the box from mousedown: width 0, height 0. The `> 4` guard then
+       rejected it and nothing was selected, even though a real box was on screen.
+
+    2. onMouseUp only ever fired when the release happened *over the Stage*.
+       Every card is a DOM element in an absolute overlay, and the overlay covers
+       the canvas, so a drag that passed over a card released on that DOM node and
+       the Stage never saw a mouseup at all.
+
+    The box is therefore recomputed here from `marqueeStart` and the current
+    pointer rather than read back from state, and `window` gets the release as
+    well (see the effect below), so it commits no matter what is under the
+    pointer. `marquee` is still read, but only as a last-resort fallback for the
+    case where the pointer has already left the Stage.
+  */
+  const commitMarquee = () => {
+    if (!marqueeStart.current) return;
+    const start = marqueeStart.current;
+    const pointer = wrapperPointer();
+    const end = pointer ? screenToWorld(viewport, pointer) : null;
+    const box = end ? normalizeRect(start, end) : marquee;
+    marqueeStart.current = null;
+    setMarquee(null);
+    if (!box) return;
+    // A click on empty canvas is not a selection gesture; it already cleared the
+    // selection on mousedown. Anything larger sweeps.
+    if (box.width <= 4 && box.height <= 4) return;
+    const hits = api.items.filter(
+      (item) => item.item_type !== 'draw' || isShapeItem(item),
+    ).filter((item) => rectsIntersect(box, itemRect(item)));
+    setSelectedIds(hits.map((item) => item.id));
+  };
+
+  /*
+    The release, wherever it happens.
+
+    The Stage's own onMouseUp covers the common case, but it cannot fire when the
+    pointer is over a DOM card overlay or has left the canvas entirely — and that
+    is precisely when a marquee drag ends, since the gesture exists to sweep up
+    cards. Listening on window closes that hole. `onMouseUp` is idempotent here:
+    the second call finds `marqueeStart` already null and does nothing, so the
+    normal path is unaffected.
+  */
+  useEffect(() => {
+    const release = () => {
+      if (!marqueeStart.current) return;
+      commitMarquee();
+    };
+    window.addEventListener('mouseup', release);
+    window.addEventListener('touchend', release);
+    window.addEventListener('touchcancel', release);
+    return () => {
+      window.removeEventListener('mouseup', release);
+      window.removeEventListener('touchend', release);
+      window.removeEventListener('touchcancel', release);
+    };
+    // commitMarquee closes over viewport and api.items; re-binding is cheap and
+    // keeps it current rather than capturing the first render's values.
+  });
+
   const onMouseMove = () => {
     if (erasing.current && canWrite) {
       // Konva reports the hovered node for the current pointer position, so a
@@ -435,16 +539,7 @@ export function WorkspaceCanvas({
     erasedThisDrag.current = new Set();
 
     // finish marquee selection
-    if (marqueeStart.current && marquee) {
-      const hits = api.items.filter((item) =>
-        item.item_type === 'draw' ? false : rectsIntersect(marquee, itemRect(item)),
-      );
-      if (marquee.width > 4 || marquee.height > 4) {
-        setSelectedIds(hits.map((item) => item.id));
-      }
-      marqueeStart.current = null;
-      setMarquee(null);
-    }
+    commitMarquee();
 
     // commit a brush stroke
     if (draft && draft.points.length >= 4) {
@@ -522,25 +617,65 @@ export function WorkspaceCanvas({
     }
   };
 
-  const handleNodeDragStart = (id: string) => {
+  /*
+    Where the pointer was, relative to the item's own top-left, when the drag
+    began.
+
+    Without this a node is positioned by its origin: Konva reports the node's new
+    x/y, and the old code used that as the item's new position, so the shape's
+    top-left corner jumped to the cursor the moment you started dragging. Grab a
+    300 px card near its right edge and it teleports under the pointer — which is
+    the "dragging feels wrong, not like MS Paint" complaint. MS Paint keeps the
+    grab offset, so the shape stays exactly where in the shape you clicked.
+
+    Computed from the node's own transform rather than from the pointer, because
+    the node's absolute position on drag start already reflects the item's
+    position in world space.
+  */
+  const grabOffset = useRef<{ x: number; y: number } | null>(null);
+
+  const handleNodeDragStart = (id: string, nodeX?: number, nodeY?: number) => {
     const ids = selectedIds.includes(id) ? selectedIds : [id];
     if (!selectedIds.includes(id)) setSelectedIds([id]);
     dragStart.current = Object.fromEntries(
       api.items.filter((item) => ids.includes(item.id)).map((item) => [item.id, { x: item.position_x, y: item.position_y }]),
     );
+    /*
+      The offset between the node's reported origin and the stored position. Both
+      describe the same corner, so unless a renderer reports a centre (the ellipse
+      case) this is zero — the subtraction keeps the ellipse from reintroducing
+      its own half-width jump.
+    */
+    const stored = api.items.find((item) => item.id === id);
+    grabOffset.current =
+      stored && nodeX !== undefined && nodeY !== undefined
+        ? { x: nodeX - stored.position_x, y: nodeY - stored.position_y }
+        : { x: 0, y: 0 };
   };
 
   const handleNodeDragEnd = async (id: string, x: number, y: number) => {
     const starts = dragStart.current;
     const snapshot = { ...starts };
-    const dx = Math.round(x) - (starts[id]?.x ?? x);
-    const dy = Math.round(y) - (starts[id]?.y ?? y);
+    /*
+      Undo the offset captured on drag start so the item's position means "its
+      top-left corner", not "the corner under the cursor". Guarded because a
+      drag can begin without onDragStart reaching us (a programmatic start, or a
+      node mounted mid-gesture) — the previous fallback dropped the grab offset
+      entirely and snapped the item to the release point.
+    */
+    const offset = grabOffset.current ?? { x: 0, y: 0 };
+    const originX = Math.round(x) - offset.x;
+    const originY = Math.round(y) - offset.y;
+    const anchor = starts[id] ?? { x: originX, y: originY };
+    const dx = originX - anchor.x;
+    const dy = originY - anchor.y;
     const moves = Object.entries(starts).map(([itemId, start]) => ({
       id: itemId,
       x: Math.round(start.x + dx),
       y: Math.round(start.y + dy),
     }));
-    if (moves.length === 0) moves.push({ id, x: Math.round(x), y: Math.round(y) });
+    if (moves.length === 0) moves.push({ id, x: originX, y: originY });
+    grabOffset.current = null;
     try {
       await api.moveItems(moves);
       undo.push({
@@ -593,7 +728,8 @@ export function WorkspaceCanvas({
   const sorted = useMemo(() => {
     const order = { text: 3, note: 3, draw: 2, image: 1, video: 1, audio: 1, media_link: 1, bookmark: 1 } as const;
     return [...api.items].sort((a, b) => {
-      const z = (a.content.z ?? 0) - (b.content.z ?? 0);
+      // `?? 0` does not protect against a null content blob, only a null z.
+      const z = (a.content?.z ?? 0) - (b.content?.z ?? 0);
       if (z !== 0) return z;
       return order[a.item_type] - order[b.item_type];
     });
@@ -605,7 +741,21 @@ export function WorkspaceCanvas({
   // eraser works on every layer (drawings, text, cards); Konva nodes stay
   // interactive so the stage sees the click even on top of a shape
   const eraseMode = tool === 'eraser' && canWrite;
-  const nodeInteraction = tool === 'select' || tool === 'eraser';
+  /*
+    Which tools let an existing node be grabbed.
+
+    'text' is in this list on purpose, and its absence was a reported bug: adding
+    a text box leaves the tool on 'text', so the box the user had just typed could
+    not be dragged.
+
+    Clicking an existing box with the text tool now selects and drags it rather
+    than starting a second box on top of it — the behaviour a paint program has.
+    Empty canvas still creates text, because the create branch is guarded by
+    `isStageClick`; only a click that actually landed on a node is taken by the
+    box. A user who wants a new box next to an existing one clicks beside it,
+    which is what they would do anyway.
+  */
+  const nodeInteraction = tool === 'select' || tool === 'eraser' || tool === 'text';
   const selectHandler = (id: string, additive: boolean) => {
     if (eraseMode) return;
     handleSelect(id, additive);
@@ -691,22 +841,25 @@ export function WorkspaceCanvas({
                 selected={selectedIds.includes(item.id)}
                 canInteract={nodeInteraction}
                 onSelect={selectHandler}
-                onDragStart={handleNodeDragStart}
+                onDragStart={(id, x, y) => handleNodeDragStart(id, x, y)}
                 onDragEnd={(id, x, y) => void handleNodeDragEnd(id, x, y)}
                 onDoubleClick={onOpenTextEditor}
-                fontFamily={fontStack(item.content.fontFamily)}
+                fontFamily={fontStack(item.content?.fontFamily)}
               />
             ) : item.item_type === 'text' || item.item_type === 'note' ? (
               <CanvasNode
                 key={item.id}
                 item={item}
                 selected={selectedIds.includes(item.id)}
-                canInteract={tool === 'select' || tool === 'eraser'}
+                // Must use the shared flag, not a local copy of the condition.
+                // The duplicate here is exactly why text boxes were inert under
+                // the text tool even after `nodeInteraction` was widened.
+                canInteract={nodeInteraction}
                 onSelect={selectHandler}
-                onDragStart={handleNodeDragStart}
+                onDragStart={(id, x, y) => handleNodeDragStart(id, x, y)}
                 onDragEnd={(id, x, y) => void handleNodeDragEnd(id, x, y)}
                 onDoubleClick={onOpenTextEditor}
-                fontFamily={fontStack(item.content.fontFamily)}
+                fontFamily={fontStack(item.content?.fontFamily)}
               />
             ) : null,
           )}

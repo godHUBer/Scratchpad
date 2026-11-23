@@ -13,8 +13,62 @@ import {
 } from './shapes';
 
 describe('SHAPES catalogue', () => {
-  it('offers the common shapes the toolbar promises', () => {
-    expect(SHAPES.map((s) => s.kind)).toEqual(['rect', 'ellipse', 'triangle', 'diamond', 'star', 'arrow']);
+  it('offers the MS Paint toolbox', () => {
+    /*
+      The catalogue is deliberately pinned: this list is what the user sees in the
+      paint toolbar, and the original six were reported as too few. Order matters
+      too — it is the order the buttons render in.
+    */
+    expect(SHAPES.map((s) => s.kind)).toEqual([
+      'line',
+      'rect',
+      'roundedRect',
+      'ellipse',
+      'triangle',
+      'rightTriangle',
+      'diamond',
+      'trapezoid',
+      'parallelogram',
+      'pentagon',
+      'hexagon',
+      'octagon',
+      'cylinder',
+      'star',
+      'arrow',
+    ]);
+  });
+
+  it('gives every shape usable geometry', () => {
+    // A missing case in polygonPoints silently returns undefined and the shape
+    // renders as nothing at all, which is how a "shape does nothing" bug hides.
+    for (const { kind } of SHAPES) {
+      const points = polygonPoints(kind, 120, 80);
+      if (kind === 'ellipse' || kind === 'arrow') continue; // drawn by their own node
+      expect(Array.isArray(points), `${kind} has no geometry`).toBe(true);
+      expect(points.length, `${kind} has no vertices`).toBeGreaterThan(0);
+      for (const [x, y] of points) {
+        expect(Number.isFinite(x) && Number.isFinite(y), `${kind} has a bad vertex`).toBe(true);
+        // Generated in local space, so the renderer only scales by item size.
+        expect(x).toBeGreaterThanOrEqual(-0.001);
+        expect(x).toBeLessThanOrEqual(120.001);
+        expect(y).toBeGreaterThanOrEqual(-0.001);
+        expect(y).toBeLessThanOrEqual(80.001);
+      }
+    }
+  });
+
+  it('keeps a stretched polygon inside its own box', () => {
+    // regularPolygon uses half-width and half-height as separate radii; using a
+    // single radius would centre the shape and overflow a wide box.
+    for (const kind of ['pentagon', 'hexagon', 'octagon'] as const) {
+      const points = polygonPoints(kind, 400, 40);
+      const xs = points.map(([x]) => x);
+      const ys = points.map(([, y]) => y);
+      expect(Math.min(...xs)).toBeGreaterThanOrEqual(-0.001);
+      expect(Math.max(...xs)).toBeLessThanOrEqual(400.001);
+      expect(Math.min(...ys)).toBeGreaterThanOrEqual(-0.001);
+      expect(Math.max(...ys)).toBeLessThanOrEqual(40.001);
+    }
   });
 
   it('has a label for every shape', () => {
