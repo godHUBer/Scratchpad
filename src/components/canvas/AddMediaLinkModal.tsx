@@ -19,6 +19,12 @@ interface AddMediaLinkModalProps {
   workspaceId: string | null;
   /** Which toolbar button opened this — the modal must not silently say "image". */
   initialKind?: MediaKind;
+  /**
+   * A URL to start with, used when the modal is opened by pasting onto the
+   * canvas. The field is filled and focus is left in the name field, since the
+   * URL is the part the user already provided.
+   */
+  initialUrl?: string;
   /** Editing an existing asset instead of creating one. */
   asset?: MediaAsset | null;
   onClose: () => void;
@@ -34,7 +40,15 @@ const KIND_OPTIONS: Array<{ value: MediaKind; label: string; icon: IconName }> =
   { value: 'link', label: 'Link card', icon: 'link' },
 ];
 
-export function AddMediaLinkModal({ open, workspaceId, initialKind = 'image', asset, onClose, onSaved }: AddMediaLinkModalProps) {
+export function AddMediaLinkModal({
+  open,
+  workspaceId,
+  initialKind = 'image',
+  initialUrl,
+  asset = null,
+  onClose,
+  onSaved,
+}: AddMediaLinkModalProps) {
   const toast = useToast();
   const [url, setUrl] = useState('');
   const [kind, setKind] = useState<MediaKind>('image');
@@ -46,7 +60,7 @@ export function AddMediaLinkModal({ open, workspaceId, initialKind = 'image', as
 
   useEffect(() => {
     if (!open) return;
-    setUrl(asset?.original_url ?? '');
+    setUrl(asset?.original_url ?? initialUrl ?? '');
     // Seed from the button the user pressed. Before this, `kind` defaulted to
     // 'image' regardless, so the audio/video/Link buttons all opened an
     // image-typed form and saved image assets.
@@ -55,6 +69,9 @@ export function AddMediaLinkModal({ open, workspaceId, initialKind = 'image', as
     setManual(Boolean(asset));
     setError(null);
     setProbe('idle');
+    // `initialUrl` is only read on open; re-running on every keystroke would
+    // overwrite what the user is typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, asset, initialKind]);
 
   const parsed = useMemo<DriveLinkInfo | null>(() => {

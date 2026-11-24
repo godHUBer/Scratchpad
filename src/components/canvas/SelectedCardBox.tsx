@@ -36,6 +36,15 @@ interface SelectedCardBoxProps {
   onDragEnd: (rect: Rect) => void;
   onResizeMove: (rect: Rect) => void;
   onResizeEnd: (rect: Rect) => void;
+  /**
+   * Double-click (or double-tap) on the card.
+   *
+   * Owned by the shell rather than the card body, because two press paths
+   * produce no dblclick on an inner element: a press that starts on a native
+   * control (the media <img>/<audio>/<video>, which the shell deliberately does
+   * not drag) and a press that begins a drag. Handling it here covers both.
+   */
+  onOpen?: () => void;
   children: React.ReactNode;
 }
 
@@ -65,13 +74,17 @@ export function SelectedCardBox({
   onDragEnd,
   onResizeMove,
   onResizeEnd,
+  onOpen,
   children,
 }: SelectedCardBoxProps) {
   const [live, setLive] = useState<Rect | null>(null);
   const [resize, setResize] = useState<{ handle: ResizeHandle; start: { x: number; y: number }; origin: Rect } | null>(
     null,
   );
-  const dragRef = useRef<{ startX: number; startY: number; origin: Rect } | null>(null);
+  // `pointerId` is carried so the capture can be taken later, in onPointerMove.
+  const dragRef = useRef<{ startX: number; startY: number; origin: Rect; pointerId: number } | null>(
+    null,
+  );
   const movedRef = useRef(false);
 
   // discard any in-flight geometry when the item is replaced (realtime refresh)
@@ -103,11 +116,22 @@ export function SelectedCardBox({
     if (!canWrite) return;
     const target = event.target as HTMLElement;
     if (target.closest(NO_DRAG)) return;
-    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    /*
+      The pointer is captured in onPointerMove, not here.
+
+      `setPointerCapture` retargets every later pointer event — including
+      `mouseup` — to this element. Capturing on *every* press meant a press on
+      the card body released on the shell instead, so the browser's
+      click/dblclick counter restarted and the inner handler never received a
+      `dblclick`. Double-clicking a card to preview it was dead for that reason.
+      Capturing only once the drag threshold is crossed keeps a plain click and a
+      double-click on the element they started on.
+    */
     dragRef.current = {
       startX: event.clientX,
       startY: event.clientY,
       origin: { x: item.position_x, y: item.position_y, width: item.width, height: item.height },
+      pointerId: event.pointerId,
     };
     movedRef.current = false;
   };
@@ -134,6 +158,15 @@ export function SelectedCardBox({
       // threshold so a plain click never triggers a write
       if (Math.abs(event.clientX - drag.startX) < 3 && Math.abs(event.clientY - drag.startY) < 3) return;
       movedRef.current = true;
+      // Now that this is definitely a drag, take the pointer so the gesture keeps
+      // working when it leaves the card. Deferring it to here is what keeps
+      // click and dblclick intact on the element the press started on.
+      try {
+        (event.currentTarget as HTMLElement).setPointerCapture(drag.pointerId);
+      } catch {
+        // A pointer that already ended (or a synthetic event) cannot be
+        // captured; the drag still works, it just stops at the card edge.
+      }
       onDragStart();
     }
     setLive(next);
@@ -158,6 +191,24 @@ export function SelectedCardBox({
     } else {
       onDragCancel();
     }
+  };
+
+  /*
+    Double-click/double-tap on the shell.
+
+    The card body still has its own onDoubleClick for the plain press path, and it
+    stops propagation — so this handler fires only for the two paths the body
+    cannot see: a press that started on a native media control, and one that
+    started a drag. Without it, double-clicking an image or an audio card did
+    nothing at all, which was the reported bug.
+
+    Only fires when nothing moved: a genuine double-click must not also have
+    nudged the card twice.
+  */
+  const onDoubleActivate = (event: React.MouseEvent | React.PointerEvent) => {
+    if (!interactive || eraseMode || !onOpen) return;
+    event.stopPropagation();
+    onOpen();
   };
 
   const handlePointerDown = (handle: ResizeHandle) => (event: React.PointerEvent) => {
@@ -193,6 +244,7 @@ export function SelectedCardBox({
       }}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
+      onDoubleClick={onDoubleActivate}
       data-card={item.id}
     >
       <div className="h-full w-full">{children}</div>

@@ -178,7 +178,7 @@ export function ResetPasswordPage() {
 
         <p className="mt-4 flex items-center gap-1.5 text-sm">
           <Icon name="back" size={14} />
-          <Link to="/signin" className="font-bold underline decoration-2 underline-offset-2">
+          <Link to="/signin" className="tap-target font-bold underline decoration-2 underline-offset-2">
             Back to sign in
           </Link>
         </p>

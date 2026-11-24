@@ -18,6 +18,8 @@ import { PageLoader, Spinner } from '../components/ui/Spinner';
 import { EmptyState } from '../components/ui/EmptyState';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { canEdit, roleLabel, writeBlockedMessage } from '../lib/permissions';
+import { parseMediaUrl } from '../lib/drive';
+import { shouldIgnoreShortcut } from '../lib/shortcuts';
 import { humanizeError } from '../lib/errors';
 import type { CanvasItem, MediaAsset } from '../types';
 import { Icon } from '../components/ui/Icon';
@@ -65,9 +67,20 @@ export function WorkspacePage() {
 
   // text editing
   const [lastCanvasAction, setLastCanvasAction] = useState<LastCanvasAction | null>(null);
-  const [textEditor, setTextEditor] = useState<{ item: CanvasItem | null; position: { x: number; y: number } | null }>(
-    { item: null, position: null },
-  );
+  /*
+    `open` is explicit rather than derived from `item`/`position`.
+
+    It used to be `item !== null || position !== null`, which meant "add text from
+    the toolbar" — which has no clicked point — could not be expressed without
+    inventing a position. That invented position was `{0,0}` in world space, so
+    every toolbar note landed at the same spot regardless of where the canvas was
+    panned, and stacked under the toolbox on a fresh canvas.
+  */
+  const [textEditor, setTextEditor] = useState<{
+    open: boolean;
+    item: CanvasItem | null;
+    position: { x: number; y: number } | null;
+  }>({ open: false, item: null, position: null });
   // bookmark editing
   const [bookmarkEditor, setBookmarkEditor] = useState<{
     open: boolean;
@@ -75,7 +88,12 @@ export function WorkspacePage() {
     prefill: Partial<BookmarkDraft>;
   }>({ open: false, bookmarkId: null, prefill: {} });
   // media editing
-  const [mediaEditor, setMediaEditor] = useState<{ open: boolean; kind: MediaModalKind; asset: MediaAsset | null }>({
+  const [mediaEditor, setMediaEditor] = useState<{
+    open: boolean;
+    kind: MediaModalKind;
+    asset: MediaAsset | null;
+    initialUrl?: string;
+  }>({
     open: false,
     kind: 'image',
     asset: null,
@@ -139,11 +157,7 @@ export function WorkspacePage() {
   // ---------------------------------------------------------------- keyboard
   useEffect(() => {
     const onKey = async (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const typing =
-        target &&
-        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
-      if (typing) return;
+      if (shouldIgnoreShortcut(event)) return;
 
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
         event.preventDefault();
@@ -200,6 +214,41 @@ export function WorkspacePage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [selectedIds, canWrite, currentRole, canvas, toast]);
 
+  /*
+    Paste a link onto the canvas.
+
+    The empty-state hint has always said "paste a Google Drive link", and there
+    was no paste handler anywhere in the app — the clipboard was silently
+    discarded. Either the sentence had to go or the behaviour had to exist; the
+    behaviour is more useful, so here it is.
+
+    Deliberately narrow: only an https URL that the media parser recognises, and
+    only when the user is not typing into a field and no dialog is open. Pasting
+    a link into a text box must remain a text edit, and pasting a screenshot
+    (which arrives as an image blob, not a URL) is not silently turned into a
+    media card.
+  */
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => {
+      if (shouldIgnoreShortcut(event as unknown as KeyboardEvent)) return;
+      if (!canWrite) return;
+      const text = event.clipboardData?.getData('text/plain')?.trim() ?? '';
+      if (!text) return;
+      const parsed = parseMediaUrl(text);
+      if (!parsed) return;
+      // Taking over the paste keeps the URL out of whatever is focused behind it.
+      event.preventDefault();
+      setMediaEditor({
+        open: true,
+        kind: parsed.kind === 'link' ? 'media_link' : (parsed.kind as MediaModalKind),
+        asset: null,
+        initialUrl: text,
+      });
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [canWrite]);
+
   // ------------------------------------------------------------- canvas API
   const api = useMemo(
     () => ({
@@ -226,12 +275,12 @@ export function WorkspacePage() {
 
   const openTextFor = (item: CanvasItem) => {
     if (!guardWrite()) return;
-    setTextEditor({ item, position: null });
+    setTextEditor({ open: true, item, position: null });
   };
 
-  const createTextAt = (position: { x: number; y: number }) => {
+  const createTextAt = (position: { x: number; y: number } | null) => {
     if (!guardWrite()) return;
-    setTextEditor({ item: null, position });
+    setTextEditor({ open: true, item: null, position });
   };
 
   /**
@@ -309,15 +358,40 @@ export function WorkspacePage() {
         redo: () => canvas.patchItem(targetId, { content: { ...beforeContent, ...content } }).then(() => undefined),
       });
       toast.success('Text updated.');
-    } else if (textEditor.position) {
+    } else if (textEditor.open) {
+      /*
+        New note.
+
+        Two placements, one code path:
+
+        - Created by clicking the canvas: the note goes where the user clicked.
+          The click point is the note's origin, offset by a little so the text
+          does not start exactly under the pointer's hotspot.
+        - Created from the toolbar: there is no clicked point, so it goes near the
+          visible centre and through `nextSlot`, which spirals to a free spot.
+
+        Previously *both* used the raw position (the toolbar passed world {0,0}),
+        so every toolbar note landed at the same coordinate — stacked on top of
+        each other, off-screen after any pan, and underneath the toolbox on a
+        fresh canvas. Moving the note the user just typed made this silent: the
+        text saved, and they saw nothing.
+      */
+      const width = Math.max(220, Math.min(720, (value.text.length || 10) * value.fontSize * 0.62 + 40));
+      const height = Math.max(70, Math.ceil((value.text.length || 10) / 30) * value.fontSize * 1.6 + 30);
+      const slot = textEditor.position
+        ? { x: textEditor.position.x - 40, y: textEditor.position.y - 20 }
+        : nextSlot(width, height);
       const created = await canvas.createItem({
         item_type: 'text',
-        position_x: textEditor.position.x - 40,
-        position_y: textEditor.position.y - 20,
-        width: Math.max(220, Math.min(720, (value.text.length || 10) * value.fontSize * 0.62 + 40)),
-        height: Math.max(70, Math.ceil((value.text.length || 10) / 30) * value.fontSize * 1.6 + 30),
+        position_x: Math.round(slot.x),
+        position_y: Math.round(slot.y),
+        width,
+        height,
         content,
       });
+      // Select it, so the user can immediately move or resize what they typed
+      // and can see where it went even if it arrived off to one side.
+      setSelectedIds([created.id]);
       setLastCanvasAction({
         label: 'text-add',
         undo: () => canvas.deleteItem(created.id).then(() => undefined),
@@ -472,7 +546,11 @@ export function WorkspacePage() {
           tool={tool}
           onTool={(next) => setTool(next)}
           disabledActions={!canWrite}
-          onText={() => createTextAt({ x: 0, y: 0 })}
+          // No position: "Add text" from the toolbar has no clicked point, so the
+          // save path places it near the visible centre. It used to pass the
+          // world coordinate {0,0}, which is off-screen after any pan and sits
+          // under the toolbox on a fresh canvas.
+          onText={() => createTextAt(null)}
           onImage={() => openMedia('image')}
           onAudio={() => openMedia('audio')}
           onVideo={() => openMedia('video')}
@@ -640,7 +718,7 @@ export function WorkspacePage() {
         {undoAvailable ? (
           <button
             type="button"
-            className="absolute bottom-3 left-1/2 z-20 -translate-x-1/2 rounded-full border-[3px] border-ink bg-paper px-3 py-1 text-xs font-black hard-shadow-sm"
+            className="absolute bottom-safe-3 left-1/2 z-20 -translate-x-1/2 rounded-full border-[3px] border-ink bg-paper px-3 py-1 text-xs font-black hard-shadow-sm"
             onClick={() => window.dispatchEvent(new CustomEvent('scratchpad:undo'))}
           >
             <Icon name="undo" size={14} className="inline" /> Undo available (Ctrl/⌘ Z)
@@ -649,11 +727,11 @@ export function WorkspacePage() {
       </div>
 
       <TextEditorModal
-        open={textEditor.item !== null || textEditor.position !== null}
+        open={textEditor.open}
         item={textEditor.item}
         defaultSize={textSize}
         defaultColor={textColor}
-        onClose={() => setTextEditor({ item: null, position: null })}
+        onClose={() => setTextEditor({ open: false, item: null, position: null })}
         onSave={handleTextSave}
       />
 
@@ -688,9 +766,10 @@ export function WorkspacePage() {
         open={mediaEditor.open}
         workspaceId={workspace.id}
         initialKind={mediaEditor.kind === 'media_link' ? 'link' : mediaEditor.kind}
+        initialUrl={mediaEditor.initialUrl}
         asset={mediaEditor.asset}
         onClose={() => {
-          setMediaEditor({ open: false, kind: 'image', asset: null });
+          setMediaEditor({ open: false, kind: 'image', asset: null, initialUrl: undefined });
           void canvas.refreshMedia();
         }}
         onSaved={(asset) => {

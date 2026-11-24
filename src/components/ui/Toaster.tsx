@@ -12,7 +12,7 @@ export function Toaster() {
   const { toasts, dismiss } = useToast();
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 bottom-4 z-[60] flex flex-col items-center gap-2 px-4 sm:bottom-auto sm:left-auto sm:right-5 sm:top-5 sm:items-end"
+      className="pointer-events-none fixed inset-x-0 bottom-safe-4 z-[60] flex flex-col items-center gap-2 px-4 sm:bottom-auto sm:left-auto sm:right-5 sm:top-5 sm:items-end"
       role="status"
       aria-live="polite"
     >

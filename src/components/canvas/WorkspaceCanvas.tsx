@@ -948,6 +948,9 @@ export function WorkspaceCanvas({
               onErase={() => void eraseItem(item.id)}
               onDragStart={() => setDraggingCard(item.id)}
               onDragCancel={() => setDraggingCard(null)}
+              // Double-click a card to open it: a preview for media, the editor
+              // for a bookmark. Same handler the Konva text/note nodes use.
+              onOpen={() => onOpenCardEditor?.(item)}
               onDragMove={() => {}}
               onDragEnd={(rect) => {
                 setDraggingCard(null);
@@ -997,7 +1000,13 @@ export function WorkspaceCanvas({
 
       </div>
 
-      <div className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-2 text-[11px] font-bold text-ink-soft">
+      {/*
+        Lifted on narrow screens so it clears the "Undo available" pill, which is
+        centred at the same height and used to overlap it on a 390 px viewport.
+        Both are bottom-anchored chrome; on a phone there is no room for them
+        side by side, so the hint moves up rather than the pill moving off-centre.
+      */}
+      <div className="pointer-events-none absolute bottom-safe-3 left-safe-3 flex items-center gap-2 text-[11px] font-bold text-ink-soft max-sm:bottom-[calc(2.75rem+var(--safe-bottom))]">
         <span className="chip pointer-events-auto bg-paper">{Math.round(viewport.scale * 100)}%</span>
         <span className="hidden sm:inline">
           {tool === 'select' ? 'Drag to move · double-click to edit' : tool === 'pan' ? 'Drag to pan' : `Drawing with ${tool}`}
@@ -1012,8 +1021,8 @@ export function WorkspaceCanvas({
           <div className="paper pointer-events-none max-w-sm px-5 py-4 text-center">
             <p className="text-lg font-black">Your canvas is blank</p>
             <p className="mt-1 text-sm text-ink-soft">
-              Pick <strong>Text</strong>, <strong>Brush</strong>, or paste a Google Drive link with{' '}
-              <strong>Media</strong>. Everything saves automatically.
+              Pick <strong>Text</strong>, <strong>Brush</strong>, or paste a Google Drive link
+              straight onto the canvas. Everything saves automatically.
             </p>
             <p className="mt-2 text-xs font-bold text-ink-soft">Tip: double-click empty space to add a note.</p>
           </div>
@@ -1021,7 +1030,7 @@ export function WorkspaceCanvas({
       ) : null}
 
       {/* hidden handles for tests/zoom buttons */}
-      <div className="absolute bottom-3 right-3 flex gap-1">
+      <div className="absolute bottom-safe-3 right-safe-3 flex gap-1">
         <ZoomButton label="Zoom out" onClick={() => zoomBy(1 / 1.25)}>
           −
         </ZoomButton>
