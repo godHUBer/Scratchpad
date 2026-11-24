@@ -59,7 +59,7 @@ export function FloatingToolbar({
       stay one tap away, the canvas keeps its space, and the sync pill sits on
       its own so it never squeezes the buttons.
     */
-    <div className="pointer-events-none absolute inset-x-0 top-2 z-20 flex flex-col items-center gap-1 px-2">
+    <div className="pointer-events-none absolute inset-x-0 top-safe-2 z-20 flex flex-col items-center gap-1 px-2">
       <div className="pointer-events-auto flex w-full max-w-full items-center gap-1 rounded-2xl border-[3px] border-ink bg-paper p-1.5 hard-shadow-sm sm:w-auto sm:justify-center">
         <div className="no-scrollbar app-scroll flex flex-1 items-center gap-1 overflow-x-auto sm:flex-none sm:overflow-visible">
           <div className="flex shrink-0 items-center gap-1">

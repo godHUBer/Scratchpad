@@ -68,7 +68,7 @@ export function InvitationsPage() {
       <header className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="text-2xl font-black tracking-tight sm:text-3xl">Invitations</h1>
-          <p className="text-sm text-ink-soft">Accept invites, track who you invited, and revoke links.</p>
+          <p className="page-subtitle">Accept invites, track who you invited, and revoke links.</p>
         </div>
         <button type="button" className="btn" onClick={() => void loadInvitations()}>
           Refresh

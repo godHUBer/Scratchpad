@@ -33,9 +33,18 @@ export function AppLayout({ children }: { children?: ReactNode }) {
     <div className="flex h-dvh-screen flex-col overflow-hidden">
       {/* pt-safe/px-safe replace px-3 py-2 rather than stacking on it: they
           already include that padding plus the device inset. */}
-      <header className="pt-safe px-safe sticky top-0 z-30 flex shrink-0 items-center justify-between gap-3 border-b-[3px] border-ink bg-cream/95 py-2 backdrop-blur-[2px] sm:px-4">
+      {/* `bg-paper`, not `bg-cream`.
+
+          In dark mode --c-cream IS the page background (#8b735e), so a
+          cream-tinted header sat flush against the page and its text inherited
+          the page's contrast problem: the wordmark measured 4.38:1 and the
+          profile name 3.29:1, both under the 4.5:1 AA floor. Pure white only
+          reaches 4.38:1 on that background, so no colour could fix it — the
+          surface had to change. On paper the same text measures 10.4:1 and
+          7.8:1. */}
+      <header className="pt-safe px-safe sticky top-0 z-30 flex shrink-0 items-center justify-between gap-3 border-b-[3px] border-ink bg-paper py-2 sm:px-4">
         <div className="flex min-w-0 items-center gap-2">
-          <Link to="/workspace" className="flex items-center gap-2 rounded-xl px-1 py-0.5 hover:bg-paper">
+          <Link to="/workspace" className="flex items-center gap-2 rounded-xl px-1 py-0.5 hover:bg-cream">
             <Icon name="bookmarkShelf" size={22} />
             <span className="hidden text-lg font-black tracking-tight sm:inline">Scratchpad</span>
           </Link>

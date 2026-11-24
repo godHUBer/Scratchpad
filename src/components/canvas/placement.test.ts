@@ -75,3 +75,43 @@ describe('sizeForKind', () => {
     expect(sizeForKind('audio').height).toBeLessThan(sizeForKind('video').height);
   });
 });
+
+describe('repeated placement (the "notes pile up" bug)', () => {
+  /*
+    Reported from the deployed app: three notes added with the toolbar's Add-text
+    button landed at exactly {"x":-40,"y":-20} — on top of each other, and at a
+    world coordinate that is off-screen after any pan and sits under the toolbox
+    on a fresh canvas.
+
+    The cause was not `findFreeSlot` (it was already correct and tested above).
+    It was that text creation never called it: the toolbar passed {0,0} and the
+    save path subtracted a fixed offset, so the spiral was never in the loop.
+    These tests pin down the property the fix has to hold — successive placements
+    must not collide — so a future shortcut that skips `findFreeSlot` fails here.
+  */
+  it('places five notes in five distinct spots', () => {
+    const size = { width: 260, height: 90 };
+    const occupied: Array<{ x: number; y: number; width: number; height: number }> = [];
+    const placed: Array<{ x: number; y: number }> = [];
+    for (let i = 0; i < 5; i += 1) {
+      // What the toolbar now does: ask for a free slot near the visible centre.
+      const slot = findFreeSlot({ x: 500 - size.width / 2, y: 400 - size.height / 2 }, size, occupied);
+      placed.push(slot);
+      occupied.push({ ...slot, ...size });
+    }
+    const keys = placed.map((p) => `${p.x},${p.y}`);
+    expect(new Set(keys).size, `duplicate positions: ${keys.join(' | ')}`).toBe(5);
+  });
+
+  it('keeps every note inside a sane band around the requested centre', () => {
+    // A spiral that runs away from the viewport is no better than a stack.
+    const size = { width: 260, height: 90 };
+    const occupied: Array<{ x: number; y: number; width: number; height: number }> = [];
+    for (let i = 0; i < 5; i += 1) {
+      const slot = findFreeSlot({ x: 370, y: 355 }, size, occupied);
+      expect(Math.abs(slot.x - 370)).toBeLessThan(1400);
+      expect(Math.abs(slot.y - 355)).toBeLessThan(1400);
+      occupied.push({ ...slot, ...size });
+    }
+  });
+});

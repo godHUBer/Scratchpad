@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useWorkspaces } from '../contexts/WorkspaceContext';
@@ -20,6 +20,18 @@ export function SettingsPage() {
   const toast = useToast();
   const [displayName, setDisplayName] = useState(profile?.display_name ?? '');
   const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url ?? '');
+  /*
+    Whether the user has edited a field.
+
+    The fields were seeded once, at mount, from `profile` — which is still null on
+    a cold load because AuthContext fetches it afterwards. Deep-linking to
+    /settings therefore showed an empty name box under a header that rendered the
+    real name, and avatarUrl was empty too.
+
+    They now re-sync when the profile arrives, but only while untouched: a late
+    profile fetch must never overwrite text the user is in the middle of typing.
+  */
+  const touched = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [signOutOpen, setSignOutOpen] = useState(false);
@@ -34,15 +46,41 @@ export function SettingsPage() {
     return chosen ?? currentWorkspace ?? workspaces[0] ?? null;
   }, [retentionForId, workspaces, currentWorkspace]);
 
+  /*
+    Pull the profile into the form when it resolves.
+
+    Keyed on the values rather than the object so a profile refresh from any
+    source settles the fields, and skipped once the user has typed.
+  */
+  useEffect(() => {
+    if (touched.current) return;
+    setDisplayName(profile?.display_name ?? '');
+    setAvatarUrl(profile?.avatar_url ?? '');
+  }, [profile?.display_name, profile?.avatar_url]);
+
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
-    setBusy(true);
     setError(null);
+    /*
+      Refuse a blank name instead of substituting one.
+
+      This used to send `displayName.trim() || 'Teammate'`, so opening Settings
+      from a cold load — where the field was empty because the profile had not
+      arrived — and pressing Save replaced the user's real display name with the
+      literal string "Teammate", then showed a green "Profile saved." Anyone who
+      pressed the obvious button lost their name.
+    */
+    if (!displayName.trim()) {
+      setError('Add a display name before saving.');
+      return;
+    }
+    setBusy(true);
     try {
       await updateProfile({
-        display_name: displayName.trim() || 'Teammate',
+        display_name: displayName.trim(),
         avatar_url: avatarUrl.trim() || null,
       });
+      touched.current = false;
       toast.success('Profile saved.');
     } catch (err) {
       setError(humanizeError(err));
@@ -55,7 +93,7 @@ export function SettingsPage() {
     <div className="mx-auto w-full max-w-3xl space-y-4 p-3 sm:p-5">
       <header>
         <h1 className="text-2xl font-black tracking-tight sm:text-3xl">Settings &amp; profile</h1>
-        <p className="text-sm text-ink-soft">Your name and avatar show up for teammates and on the canvas.</p>
+        <p className="page-subtitle">Your name and avatar show up for teammates and on the canvas.</p>
       </header>
 
       <section className="paper p-4">
@@ -79,7 +117,10 @@ export function SettingsPage() {
               id="display-name"
               className="input"
               value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
+              onChange={(event) => {
+                touched.current = true;
+                setDisplayName(event.target.value);
+              }}
               maxLength={80}
               placeholder="How should we call you?"
             />
@@ -92,7 +133,10 @@ export function SettingsPage() {
               id="avatar-url"
               className="input"
               value={avatarUrl}
-              onChange={(event) => setAvatarUrl(event.target.value)}
+              onChange={(event) => {
+                touched.current = true;
+                setAvatarUrl(event.target.value);
+              }}
               placeholder="https://…"
               inputMode="url"
             />

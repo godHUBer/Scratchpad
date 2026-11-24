@@ -91,7 +91,7 @@ export function BookmarksPage() {
       <header className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="text-2xl font-black tracking-tight sm:text-3xl">Bookmarks</h1>
-          <p className="text-sm text-ink-soft">
+          <p className="page-subtitle">
             Library for <strong>{currentWorkspace?.name ?? 'your workspace'}</strong>
             {currentWorkspace?.type === 'personal' ? ' (private)' : ''}
           </p>

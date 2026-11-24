@@ -115,7 +115,7 @@ export function AdminPage() {
           <p className="mt-3 text-[11px] text-ink-soft">
             Five wrong attempts in 15 minutes locks this form. Every attempt is recorded.
           </p>
-          <Link to="/signin" className="mt-3 inline-flex items-center gap-1 text-xs font-bold underline">
+          <Link to="/signin" className="tap-target mt-3 inline-flex items-center gap-1 text-xs font-bold underline">
             <Icon name="back" size={13} /> Back to sign in
           </Link>
         </div>
@@ -142,7 +142,7 @@ export function AdminPage() {
       <header className="mb-4 flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="text-2xl font-black tracking-tight sm:text-3xl">Admin console</h1>
-          <p className="text-sm text-ink-soft">
+          <p className="page-subtitle">
             {resultSummary(visibleUsers.length, admin.users.length, query)} · {online} online now
           </p>
         </div>

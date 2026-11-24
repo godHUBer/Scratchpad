@@ -245,7 +245,7 @@ export function SignInPage() {
             <p className="mt-2 text-sm">
               <Link
                 to="/reset-password"
-                className="font-bold underline decoration-2 underline-offset-2"
+                className="tap-target font-bold underline decoration-2 underline-offset-2"
               >
                 Forgot your password?
               </Link>
@@ -255,7 +255,7 @@ export function SignInPage() {
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
             <button
               type="button"
-              className="font-bold underline decoration-2 underline-offset-2"
+              className="tap-target font-bold underline decoration-2 underline-offset-2"
               onClick={() => {
                 setMode(mode === 'signin' ? 'signup' : 'signin');
                 setError(null);
@@ -266,7 +266,7 @@ export function SignInPage() {
             </button>
             <Link
               to="/admin"
-              className="text-xs font-bold text-ink-soft underline underline-offset-2 hover:text-ink"
+              className="tap-target text-xs font-bold text-ink-soft underline underline-offset-2 hover:text-ink"
             >
               Admin access
             </Link>

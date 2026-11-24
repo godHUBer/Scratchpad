@@ -62,7 +62,7 @@ export function TeamsPage() {
       <header className="mb-4 flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="text-2xl font-black tracking-tight sm:text-3xl">My teams</h1>
-          <p className="text-sm text-ink-soft">Switch workspaces, manage members and invitations.</p>
+          <p className="page-subtitle">Switch workspaces, manage members and invitations.</p>
         </div>
         <button type="button" className="btn btn-primary" onClick={() => setCreateOpen(true)}>
           + Create a team
